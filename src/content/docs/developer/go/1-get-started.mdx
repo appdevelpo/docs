@@ -9,6 +9,18 @@ Go 插件就是一份普通的 Go 源文件（`.go`），宿主使用 [Scriggo](
 
 ## 創建插件文件
 
+### 使用模板倉庫（推薦）
+
+你可以直接使用 [miru_extension_template](https://github.com/appdevelpo/miru_extension_template) 模板倉庫來快速開始：
+
+1. 點擊倉庫頁面的 **Use this template** → **Create a new repository**
+2. 為你的新插件倉庫命名
+3. Clone 到本地後即可開始開發
+
+模板已包含完整的開發環境配置（Dev Container）、SDK 依賴、測試框架與 GitHub Actions CI，讓你可以專注於插件邏輯。
+
+### 手動創建
+
 新建一個與包名同名的 `.go` 文件，例如 `my.extension.go`。文件是一個普通的 Go package，通過 `go get` 引入官方 SDK：
 
 ```bash
