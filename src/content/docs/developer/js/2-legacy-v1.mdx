@@ -1,0 +1,124 @@
+---
+title: JavaScript 插件 V1（舊版）
+description: 使用 class extends Extension 舊寫法開發 Miru Alpha 的 JavaScript 插件（已不再推薦）
+---
+
+:::caution[舊版 API，不再推薦]
+新插件請使用 [JavaScript 插件 V2（goja）](/developer/js/1-get-started/)。本頁僅保留給仍然使用 `class extends Extension` 寫法的存量插件參考。V1 與 V2 的核心區別是 `watch()`：V1 的 `watch()` **直接返回最終播放地址**（沒有 `mirror()` 步驟），而 V2 的 `watch()` 返回鏡像列表、再由 `mirror()` 解析。
+:::
+
+V1 插件是一個繼承自宿主注入的 `Extension` 類的對象。宿主在加載時會把 `class X extends Extension` 改寫為 `globalThis.Ext = class extends Extension {...}`，並實例化它。所有請求方法都掛在 `this` 上。
+
+## 入口方法
+
+```javascript
+class Demo extends Extension {
+  // 最近更新（page 從 1 開始）
+  async latest(page) { /* ... */ }
+
+  // 搜索（注意：V1 同樣接收 filter 參數，可忽略）
+  async search(keyword, page, filter) { /* ... */ }
+
+  // 詳情
+  async detail(url) { /* ... */ }
+
+  // 觀看：直接返回最終播放結構（無 mirror 步驟）
+  async watch(url) { /* ... */ }
+
+  // 可選：熱門 / 檢查更新 / 加載鉤子
+  async popular(page) { /* ... */ }
+  async checkUpdate(url) { /* ... */ }
+  async load() { /* 插件加載時執行一次 */ }
+}
+```
+
+:::tip
+未實現的方法默認 `throw new Error("not implement ...")`，只有被實際調用時才會報錯，不影響其它方法。
+:::
+
+## 請求與 DOM
+
+```javascript
+class Demo extends Extension {
+  async request(url, options) {
+    // 相對 @webSite 的地址；自動嘗試 JSON.parse 響應
+    const json = await this.request("/api/list?page=1");
+    // 完整地址請求
+    const html = await this.rawRequest("https://example.com/page");
+    // 用 linkedom 解析 HTML（V1 也內置 require）
+    const { parseHTML } = require("linkedom");
+    const { document } = parseHTML(html);
+    const title = document.querySelector(".title")?.textContent;
+    return { json, title };
+  }
+}
+```
+
+`this` 上還提供 `querySelector(content, selector)` / `querySelectorAll(content, selector)` / `getAttributeText(content, selector, attr)` 等便捷方法（基於 linkedom）。
+
+## 完整示例（V1）
+
+```javascript
+// ==MiruExtension==
+// @name         Demo Bangumi (V1)
+// @package      demo.bangumi.v1
+// @author       Demo
+// @license      MIT
+// @lang         zh-cn
+// @icon         https://example.com/icon.png
+// @webSite      https://example.com/
+// @type         bangumi
+// ==/MiruExtension==  （注意：V1 不寫 @apiVersion，或寫非 2 的值）
+
+class Demo extends Extension {
+  async latest(page) {
+    const json = await this.request(`/api/latest?page=${page}`);
+    return json.list.map((it) => ({
+      title: it.title,
+      url: it.id,
+      cover: it.cover,
+      update: it.update,
+    }));
+  }
+
+  async search(keyword, page) {
+    const json = await this.request(`/api/search?kw=${keyword}&page=${page}`);
+    return json.list.map((it) => ({
+      title: it.title,
+      url: it.id,
+      cover: it.cover,
+    }));
+  }
+
+  async detail(url) {
+    const json = await this.request(`/api/detail/${url}`);
+    return {
+      title: json.title,
+      cover: json.cover,
+      desc: json.desc,
+      chapters: json.episodes.map((ep) => ({
+        title: ep.name,
+        urls: ep.sources.map((s) => s.url),
+      })),
+    };
+  }
+
+  // V1：watch 直接返回最終播放結構（這裡是 bangumi 的 hls 鏈接）
+  async watch(url) {
+    const json = await this.request(`/api/stream/${url}`);
+    return {
+      type: "hls", // hls | mp4 | torrent | magnet
+      url: json.playUrl,
+      headers: { Referer: "https://example.com/" },
+    };
+  }
+}
+```
+
+:::note
+V1 的 `watch()` 返回結構與 V2 `mirror()` 的返回結構完全一致（見 [數據格式](/developer/5-data/)）。區別只在調用方式：V1 一次性返回，V2 先 `watch` 列鏡像、再 `mirror` 解析。
+:::
+
+## 提交插件
+
+請通過 PR 將插件提交到 `Miru 插件倉庫`，PR 中需包含插件源文件，**不需要** `index.json`。

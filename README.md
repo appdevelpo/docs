@@ -6,14 +6,16 @@
 
 这个站点使用的是 [starlight](https://starlight.astro.build/). 站点内容使用 MDX 编写，文件都在根目录中. 如果只有一些简单的修改，你可以直接在 GitHub 网页端进行修改并新建一个 Pull Request.
 
-在本地开发中，[pnpm](https://pnpm.io/) 被选用为项目的包管理器，你需要使用 pnpm 安装依赖：
+在本地开发中，[Deno](https://deno.com/) 被选用为项目的包管理器与运行时，你需要使用 Deno 安装依赖：
 
 ```bash
-pnpm i
-pnpm run dev
-pnpm run build
-pnpm run start
+deno install
+deno task dev
+deno task build
+deno task preview
 ```
+
+也可以通过 `deno run -A npm:astro dev` 等命令直接以 npm 包形式运行 Astro。
 
 **请注意！请务必在修改后使用 `build` 和 `start` 查看构建产物是否正常输出！**
 

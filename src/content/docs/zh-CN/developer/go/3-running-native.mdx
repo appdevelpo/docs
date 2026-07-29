@@ -1,0 +1,122 @@
+---
+title: 原生 Go 运行
+description: 以原生 Go 包的方式本地开发与测试 Go 扩展（阶段一）
+---
+
+Miru 的 Go 扩展同一份源码可以**两种阶段**驱动。本页讲**阶段一 · 原生 Go（开发期）**：把扩展当成一个普通的 Go package 来写，从而获得完整的 IDE 支持与单测能力。
+
+> 关键点：**阶段一与阶段二（Scriggo 运行）使用同一份源文件**。你在本地用原生 Go 调通的逻辑，运行时会被 Scriggo 原样编译执行，不会出现「本地能跑、装上跑不了」的偏差。运行时如何驱动见 [Scriggo 运行](/developer/go/4-running-scriggo/)。
+
+## 初始化项目
+
+```bash
+mkdir my.extension && cd my.extension
+go mod init my.extension
+go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
+```
+
+## 像普通 Go 包一样编写与调试
+
+`my.extension.go`（与 [详细用法](/developer/go/2-detail-usage/) 中的结构一致，直接 `import sdk`）：
+
+```go
+package myextension
+
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+
+func Search(pkg, kw string, page int, filter string) ([]sdk.ExtensionListItem, error) {
+    // 直接当普通 Go 函数调试，可打断点、可单测
+    return []sdk.ExtensionListItem{{Title: kw, URL: "https://example.com/1"}}, nil
+}
+```
+
+你可以像开发任何 Go 项目一样使用 gopls 补全、`go build` 类型检查，并把入口函数当作普通函数调用验证逻辑。
+
+## 用 go test 验证返回结构
+
+配套 `my.extension_test.go` 即可用 `go test` 确认每个入口函数返回的结构正确：
+
+```go
+package myextension
+
+import "testing"
+
+func TestSearch(t *testing.T) {
+    items, err := Search("my.extension", "test", 1, "")
+    if err != nil {
+        t.Fatal(err)
+    }
+    if len(items) == 0 {
+        t.Fatal("want at least one item")
+    }
+}
+```
+
+## 调试（原生 Go）
+
+阶段一是普通 Go 包，**所有标准 Go 调试手段都能用**，这是它最大的优势。
+
+### 用 go test 做断言式调试
+
+不要只靠「肉眼看返回」，把预期写进测试，用 `-v` 看每个用例的明细：
+
+```bash
+go test -v ./...
+go test -run TestSearch -v        # 单独跑某个入口
+go test -run TestDetail -v -count=1  # -count=1 禁用缓存，强制重跑
+```
+
+推荐用**表驱动测试**覆盖多种输入（不同 page / kw / 是否需要登录）：
+
+```go
+func TestSearch(t *testing.T) {
+    cases := []struct {
+        name string
+        kw   string
+        page int
+        want int // 期望返回条数下限
+    }{
+        {"正常关键词", "naruto", 1, 1},
+        {"空结果", "zzz_no_such_thing", 1, 0},
+    }
+    for _, c := range cases {
+        t.Run(c.name, func(t *testing.T) {
+            items, err := Search("my.extension", c.kw, c.page, "")
+            if err != nil {
+                t.Fatalf("unexpected error: %v", err)
+            }
+            if len(items) < c.want {
+                t.Fatalf("want >= %d items, got %d", c.want, len(items))
+            }
+        })
+    }
+}
+```
+
+### 打印与日志
+
+- 临时打印用 `fmt.Printf("DEBUG kw=%q items=%d\n", kw, len(items))`；确认后删除或改用 `log`。
+- 需要带时间戳/行号：`import "log"` 后 `log.Printf(...)`。
+- Scriggo 运行期看不到你的 `fmt` 输出（那是宿主侧），所以**所有要看的输出请在阶段一用 `go test` 验证**。
+
+### 断点调试（Delve）
+
+安装 [Delve](https://github.com/go-delve/delve) 后，可直接对扩展源码下断点：
+
+```bash
+dlv test -- -test.run TestSearch   # 在测试里断点调试
+dlv debug                          # 若有 main 可调试
+```
+
+在 VS Code / Zed 等编辑器里配置 Go 调试器（基于 Delve）即可图形化单步、看变量。
+
+### gopls 与类型检查
+
+- `gopls` 提供补全、跳转、悬停文档；写代码时就能发现类型错误。
+- 提交前跑 `go vet ./...` 和 `go build ./...` 做静态检查，避免把 Scriggo 不支持的低级错误（如未使用的变量）带进运行期。
+
+:::tip
+推荐流程：**先在阶段一用原生 Go + `go test` 把每个入口函数的返回结构调对**，再把源文件放进 Miru 扩展目录交给阶段二（Scriggo）运行。两个阶段的返回结构完全一致（见 [数据格式](/developer/5-data/)），所以本地测试通过即代表运行期正确。
+:::
+
+miru-core 仓库内的 `pkg/extension/golang/extensions/example` 就是这种「一份源码、两阶段通用」的范例——它既能被原生 Go 直接 `import` 调用，也能被 Scriggo 编译运行。

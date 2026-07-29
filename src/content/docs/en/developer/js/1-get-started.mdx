@@ -1,0 +1,157 @@
+---
+title: Get Started (V2)
+description: Develop Miru Alpha JavaScript extensions with the goja engine using the V2 API
+---
+
+Miru Alpha's JavaScript extensions run on the pure-Go [goja](https://github.com/dop251/goja) engine; extension files use the `.js` suffix. This page covers the **V2 (recommended)** JS workflow; see [Getting Started](/en/developer/2-extension/) for the shared metadata and [Data Formats](/en/developer/5-data/) for the return structures.
+
+:::caution[Legacy V1 is no longer recommended]
+Extensions still using the old `class extends Extension` style should refer to [JavaScript Extensions V1 (legacy)](/en/developer/js/2-legacy-v1/). **New extensions should use the V2 API on this page**: `watch()` returns a list of mirrors and `mirror()` resolves the final URL, matching the Go extension contract.
+:::
+
+## Create the Extension File
+
+Create a `.js` file in the extension directory whose name matches your package name (e.g. `my.extension.js`).
+
+:::tip
+Open the Extensions page in the client and click the import button in the top-right corner to quickly locate the extension directory.
+:::
+
+## Entry Points
+
+```javascript
+// V2: declare these as top-level functions; no class is needed
+var latest = (page) => { /* latest updates */ };
+var search = (kw, page, filter) => { /* search (filter is an optional filter string) */ };
+var detail = (url) => { /* detail */ };
+var watch = (url) => { /* returns a list of mirrors */ };
+var mirror = (url) => { /* resolves the final playback URL */ };
+var createFilter = (filter) => { /* returns filter descriptions (optional, not implemented by default) */ };
+var checkUpdate = () => { /* check for updates (optional) */ };
+async function load() { /* runs once when the extension loads */ }
+```
+
+:::tip
+The host calls these functions with fixed signatures: `latest(page)`, `search(kw, page, filter)`, `detail(url)`, `watch(url)`, `mirror(url)`, `createFilter(filter)`. A function you don't implement defaults to `throw new Error("not implement ...")` and only errors if it is actually called, so it does not affect the others.
+:::
+
+## Requests and Caching
+
+Requests go through the global `Miru` object:
+
+```javascript
+// request: appends url to the extension's @webSite (relative), and auto JSON.parse's the response
+const json = await Miru.request("/api/list?page=1");
+// rawRequest: uses the full URL, no @webSite prefixing
+const html = await Miru.rawRequest("https://example.com/page");
+
+// persist state across calls (the goja VM is destroyed after every execution); values are stored as strings
+Miru.saveCache("token", "abc123");
+const token = Miru.getCache("token");
+
+// Miru also exposes the extension's own metadata
+Miru.pkg; Miru.name; Miru.website;
+```
+
+In V2, `watch()` returns a **list of mirrors** (not the final URL). After the user picks a mirror, the frontend calls `mirror(url)` to resolve the final playback link:
+
+```javascript
+var watch = (url) => {
+  const groups = {
+    "Server 1": [
+      { name: "Mirror 1", url: "https://m1.example.com/a.m3u8", headers: {} },
+      { name: "Mirror 2", url: "https://m2.example.com/a.m3u8", headers: {} },
+    ],
+  };
+  return { groups: Object.keys(groups).map((t) => ({ title: t, mirrors: groups[t] })) };
+};
+
+var mirror = (url) => ({
+  type: "hls",                 // hls | mp4 | torrent | magnet (content type, NOT extension type)
+  url,
+  headers: { "User-Agent": "Mozilla/5.0" },
+  // tlsConfig: { profile: "chrome_133" },  // Go extensions only: backend auto-proxies with TLS fingerprint
+});
+```
+
+:::note
+V1's `watch()` returns the final playback URL directly and has no `mirror()` step; V2's `mirror()` is the equivalent of V1's `watch()`. If a V2 extension does not implement `mirror()`, the host passes the selected mirror URL straight through. The full legacy V1 style is documented on [JavaScript Extensions V1 (legacy)](/en/developer/js/2-legacy-v1/).
+
+`watch()` accepts two shapes: `{ groups: [{ title, mirrors: [{ name, url, headers }] }] }` (array form), or `{ groups: { "Server 1": [...] } }` (object keyed by group title — recommended, matches the example above).
+:::
+
+## Node Modules (require)
+
+The goja runtime has a nodejs-style `require` built in, so extensions can load the host's prebundled modules without shipping their own dependencies:
+
+```javascript
+const { parseHTML } = require("linkedom"); // lightweight DOM parsing
+const CryptoJS = require("crypto-js");     // CryptoJS.MD5 / AES / ...
+const md5 = require("md5");                 // blueimp JavaScript-MD5: md5("str")
+const JSEncrypt = require("jsencrypt");     // RSA: new JSEncrypt()
+const zlib = require("zlib");               // compression (see table below)
+```
+
+Available modules:
+
+| Module | Purpose / exports |
+| :- | :- |
+| `linkedom` | `parseHTML(html)` returns a DOM (`document` / `querySelector`, etc.) for scraping pages. |
+| `crypto-js` | `CryptoJS` (MD5, SHA, AES, DES, Base64, Hmac — same API as the browser crypto-js). |
+| `md5` | blueimp's `md5(string)` function. |
+| `jsencrypt` | `JSEncrypt` class (`new JSEncrypt()` + `setPublicKey` + `encrypt`). |
+| `zlib` | Synchronous compress/decompress: `gzipSync` / `gunzipSync` / `deflateSync` / `inflateSync` / `brotliCompressSync` / `brotliDecompressSync` / `zstdCompressSync` / `zstdDecompressSync`, returning `Uint8Array`; `bytesFromBase64(str)` decodes base64 into a binary-safe `Uint8Array`. |
+| `url` | nodejs `url` module (`new URL()`, parsing, etc.). |
+| `console` | Debug output (`console.log` / `warn` / `error`), forwarded to Miru's developer log. |
+
+:::tip
+These modules are **precompiled into goja** by the host, so you can only `require` them from a JS extension — you cannot `npm install` arbitrary packages as in a normal Node project. If you need a library that isn't bundled yet, open an issue against miru-core to request it.
+:::
+
+There is also a global `crypto` object (`crypto.getRandomValues`, max 65536 bytes per call).
+
+## Complete Example
+
+```javascript
+// ==MiruExtension==
+// @name         Demo Bangumi
+// @package      demo.bangumi
+// @author       Demo
+// @license      MIT
+// @lang         zh-cn
+// @icon         https://example.com/icon.png
+// @webSite      https://example.com/
+// @type         bangumi
+// @apiVersion   2
+// ==/MiruExtension==
+
+var latest = async (page) => {
+  const json = await Miru.request(`/api/latest?page=${page}`);
+  return json.list.map((it) => ({ title: it.title, url: it.id, cover: it.cover, update: it.update }));
+};
+
+var search = async (kw, page) => {
+  const json = await Miru.request(`/api/search?kw=${kw}&page=${page}`);
+  return json.list.map((it) => ({ title: it.title, url: it.id, cover: it.cover }));
+};
+
+var detail = async (url) => {
+  const json = await Miru.request(`/api/detail/${url}`);
+  return {
+    title: json.title,
+    cover: json.cover,
+    desc: json.desc,
+    chapters: json.episodes.map((ep) => ({ title: ep.name, urls: ep.sources.map((s) => s.url) })),
+  };
+};
+
+var watch = (url) => ({
+  groups: [{ title: "Default", mirrors: [{ name: "Source", url, headers: {} }] }],
+});
+
+var mirror = (url) => ({ type: "mp4", url, headers: {} });
+```
+
+## Submitting Extensions
+
+Submit your extension to the `Miru Extension Repository` via a PR. The PR must contain the extension source file and **does not need** the `index.json` file.

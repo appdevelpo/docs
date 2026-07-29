@@ -6,14 +6,16 @@
 
 This site is built with [starlight](https://starlight.astro.build/). The content of the site is written in MDX and the files are located in the root directory. If you only have minor changes, you can directly make modifications on the GitHub web interface and create a new pull request.
 
-For local development, [pnpm](https://pnpm.io/) is chosen as the project's package manager. You need to use pnpm to install dependencies:
+For local development, [Deno](https://deno.com/) is chosen as the project's package manager and runtime. You need to use Deno to install dependencies:
 
 ```bash
-pnpm i
-pnpm run dev
-pnpm run build
-pnpm run start
+deno install
+deno task dev
+deno task build
+deno task preview
 ```
+
+You can also run Astro directly as an npm package via `deno run -A npm:astro dev`.
 
 **Please note! After making modifications, make sure to use `build` and `start` to check if the build output is correct!**
 

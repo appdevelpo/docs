@@ -1,0 +1,122 @@
+---
+title: Running with Native Go
+description: Develop and test a Go extension locally as a native Go package (Stage 1)
+---
+
+A Miru Go extension's single source file can be driven in **two stages**. This page covers **Stage 1 · Native Go (development)**: write the extension as an ordinary Go package to get full IDE support and unit testing.
+
+> Key point: **Stage 1 and Stage 2 (Running with Scriggo) use the same source file.** Logic you get working locally with native Go is compiled and executed unchanged by Scriggo at runtime, so there is no "works locally but fails once installed" gap. How the host drives it at runtime is on [Running with Scriggo](/en/developer/go/4-running-scriggo/).
+
+## Initialize the project
+
+```bash
+mkdir my.extension && cd my.extension
+go mod init my.extension
+go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
+```
+
+## Write and debug like a normal Go package
+
+`my.extension.go` (same shape as in [Detail Usage](/en/developer/go/2-detail-usage/), just `import sdk` directly):
+
+```go
+package myextension
+
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+
+func Search(pkg, kw string, page int, filter string) ([]sdk.ExtensionListItem, error) {
+    // Debug it like any normal Go function — breakpoints, unit tests, etc.
+    return []sdk.ExtensionListItem{{Title: kw, URL: "https://example.com/1"}}, nil
+}
+```
+
+You can use gopls autocomplete, `go build` type-checking, and call entry functions like ordinary functions — exactly like any Go project.
+
+## Validate return shapes with go test
+
+Add `my.extension_test.go` and confirm each entry function returns the right shape with `go test`:
+
+```go
+package myextension
+
+import "testing"
+
+func TestSearch(t *testing.T) {
+    items, err := Search("my.extension", "test", 1, "")
+    if err != nil {
+        t.Fatal(err)
+    }
+    if len(items) == 0 {
+        t.Fatal("want at least one item")
+    }
+}
+```
+
+## Debugging (Native Go)
+
+Stage 1 is a normal Go package, so **every standard Go debugging tool works** — this is its biggest advantage.
+
+### Assertive debugging with go test
+
+Don't just eyeball the return value — encode your expectations in tests and use `-v` to see each case:
+
+```bash
+go test -v ./...
+go test -run TestSearch -v           # run a single entry point
+go test -run TestDetail -v -count=1   # -count=1 disables caching, forces a rerun
+```
+
+Prefer **table-driven tests** to cover many inputs (different page / kw / login-required):
+
+```go
+func TestSearch(t *testing.T) {
+    cases := []struct {
+        name string
+        kw   string
+        page int
+        want int // minimum expected item count
+    }{
+        {"normal keyword", "naruto", 1, 1},
+        {"empty result", "zzz_no_such_thing", 1, 0},
+    }
+    for _, c := range cases {
+        t.Run(c.name, func(t *testing.T) {
+            items, err := Search("my.extension", c.kw, c.page, "")
+            if err != nil {
+                t.Fatalf("unexpected error: %v", err)
+            }
+            if len(items) < c.want {
+                t.Fatalf("want >= %d items, got %d", c.want, len(items))
+            }
+        })
+    }
+}
+```
+
+### Printing and logging
+
+- Quick prints: `fmt.Printf("DEBUG kw=%q items=%d\n", kw, len(items))`; remove or switch to `log` once confirmed.
+- For timestamps/line numbers: `import "log"` then `log.Printf(...)`.
+- Your `fmt` output is **not visible at Scriggo runtime** (that's host-side), so **verify everything you need to see via `go test` in Stage 1**.
+
+### Breakpoint debugging (Delve)
+
+Install [Delve](https://github.com/go-delve/delve), then break into your extension source directly:
+
+```bash
+dlv test -- -test.run TestSearch   # breakpoint-debug inside a test
+dlv debug                          # if you have a main to debug
+```
+
+In VS Code / Zed, configure the Go debugger (built on Delve) for graphical stepping and variable inspection.
+
+### gopls and static checks
+
+- `gopls` gives completion, jump-to-definition, and hover docs — type errors surface as you type.
+- Before submitting, run `go vet ./...` and `go build ./...` to catch low-level issues (e.g. unused variables) before they reach Scriggo runtime.
+
+:::tip
+Recommended flow: **first get each entry function's return shape right in Stage 1 using native Go + `go test`**, then drop the source file into Miru's extension directory for Stage 2 (Scriggo). The return shapes are identical across both stages (see [Data Formats](/en/developer/5-data/)), so a passing local test means it is correct at runtime.
+:::
+
+The `pkg/extension/golang/extensions/example` package inside miru-core is exactly this "one source, two stages" reference — it can be imported and called directly by native Go, and also compiled and run by Scriggo.

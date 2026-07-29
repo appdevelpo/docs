@@ -1,0 +1,51 @@
+---
+title: 开始开发
+description: Miru Alpha 扩展开发指南（JavaScript / Go）
+---
+
+Miru Alpha 的扩展系统同时支持 **JavaScript** 与 **Go** 两种语言运行时：
+
+- **JavaScript 运行时**：基于 [goja](https://github.com/dop251/goja)（纯 Go 实现的 ECMAScript 引擎），扩展文件后缀为 `.js`。
+- **Go 运行时**：基于 [Scriggo](https://github.com/open2b/scriggo)（Go 语言的模板/脚本引擎），扩展文件后缀为 `.go`。
+
+两种扩展使用同一套元数据与数据返回结构，前端对两者一视同仁。开发扩展需要一定的 JavaScript 或 Go 基础，以及正则表达式知识。如果还不熟悉正则表达式，可以先学习 《[正则表达式和字符串的方法](https://zh.javascript.info/regexp-methods)》 与 《[正则表达式 30 分钟入门教程](https://deerchao.net/tutorials/regex/regex.htm)》。
+
+本文档默认你已按 [开发环境](/developer/1-environment/) 配置好环境。
+
+## 扩展元数据
+
+无论是 JS 还是 Go 扩展，文件顶部都必须用注释包裹一份元数据，格式为 `// ==MiruExtension==` … `// ==/MiruExtension==`。
+
+```text
+// ==MiruExtension==
+// @name         My Extension
+// @version      v0.0.1
+// @author       YourName
+// @license      MIT
+// @lang         zh-cn
+// @icon         https://example.com/icon.png
+// @package      my.extension
+// @type         bangumi
+// @webSite      https://example.com/
+// @apiVersion   2
+// ==/MiruExtension==
+```
+
+:::tip
+必填字段：`@name`、`@version`、`@package`、`@webSite`、`@type`、`@apiVersion`。
+- `@package` **必须**与扩展文件名一致（不含 `.js` / `.go` 后缀）。
+- `@type` 决定扩展的内容类型，可选值：`bangumi`（动画）、`manga`（漫画）、`fikushon`（小说）、`all`（三者合一）。
+- `@apiVersion`：JS 扩展填 `2` 使用新版 API（推荐）；Go 扩展默认即为 V2，可省略。
+- `@license`、`@lang`、`@icon`、`@description`、`@tags` 等为可选项。
+:::
+
+## 选择运行时
+
+元数据写好后，按你的语言选择对应的开发指南，其中包含完整的入口函数、请求/缓存 API 与可运行示例：
+
+- **JavaScript**：[JavaScript 扩展 V2（goja）](/developer/js/1-get-started/)（推荐）；沿用旧写法的请看 [JavaScript 扩展 V1（旧版）](/developer/js/2-legacy-v1/)。
+- **Go**：[Go 扩展（Scriggo）](/developer/go/1-get-started/)
+
+返回值结构（列表项、详情、按类型区分的播放结构等）统一在 [数据格式](/developer/5-data/) 中定义。
+
+

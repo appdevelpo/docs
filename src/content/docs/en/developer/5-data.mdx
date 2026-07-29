@@ -1,0 +1,439 @@
+---
+title: Data Formats (V2 / V1 legacy)
+description: Input and return structures for Miru Alpha extensions — V2 is current, V1 is legacy-compatible
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+This page defines the **input parameters and return structures** of each extension entry point, and corresponds one-to-one with the entry functions in [JavaScript Extensions (V2)](/en/developer/js/1-get-started/) / [Go Extensions](/en/developer/go/1-get-started/).
+
+- **V2 (current standard)**: `watch()` returns a list of mirrors, then `mirror(url)` resolves it into the per-type shapes below. New extensions must use V2.
+- **V1 (legacy-compatible)**: `watch()` returns the final playback shape directly, with no `mirror()` step — see [Data Formats (V1, legacy)](#data-formats-v1-legacy) at the bottom. Reference only for existing extensions; [JavaScript Extensions V1 (legacy)](/en/developer/js/2-legacy-v1/) covers its syntax.
+
+:::tip
+The core V1 vs V2 difference is in `watch`: V1's `watch()` **returns the final playback shape directly**; V2's `watch()` returns a **list of mirrors** (`WatchList`), and once the user picks a mirror the frontend calls `mirror(url)` to resolve it into the per-type shapes below (`BangumiWatch` / `MangaWatch` / `FikushonWatch`). The **per-type playback shapes themselves are identical across both versions** — only the `watch` contract differs.
+:::
+
+## Method Parameters (V2)
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+// Recently Updated
+latest(page: number)
+
+// Search
+search(kw: string, page: number, filter?: string)
+
+// Get Details
+detail(url: string)
+
+// Watch: returns a list of mirrors (V2)
+watch(url: string)
+
+// Resolve the chosen mirror into the final playback shape (V2)
+mirror(url: string)
+
+// Check for Updates for Episodes/Chapters (returns string)
+checkUpdate(url: string)
+
+// Called when unloading
+unload() { }
+
+// Called when loading
+load(){}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+func Latest(pkg string, page int) ([]sdk.ExtensionListItem, error)
+func Search(pkg string, kw string, page int, filter string) ([]sdk.ExtensionListItem, error)
+func Detail(pkg, url string) (*sdk.ExtensionDetail, error)
+func Watch(pkg, url string) (*sdk.ExtensionWatch, error)
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error)
+func Load()
+```
+
+</TabItem>
+</Tabs>
+
+## Data Returned by Methods (V2)
+
+### ListItem — returned by `search` / `latest`
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface ListItem {
+  title: string;
+  url: string;
+  cover: string;
+  update?: string;
+  type?: string;
+  image?: string;
+  headers?: { [key: string]: string };
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionListItem struct {
+	Title   string            `json:"title"`
+	URL     string            `json:"url"`
+	Cover   string            `json:"cover"`
+	Update  string            `json:"update"`
+	Image   string            `json:"image,omitempty"`
+	Type    string            `json:"type,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="Sample response"
+{
+  "title": "One Piece",
+  "url": "https://example.com/one-piece",
+  "cover": "https://example.com/covers/one-piece.jpg",
+  "update": "EP 1122",
+  "type": "bangumi"
+}
+```
+
+### Detail — returned by `detail`
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface Detail {
+  title: string;
+  cover: string;
+  desc?: string;
+  description?: string;
+  headers?: { [key: string]: string };
+  chapters?: Chapter[];
+}
+
+export interface Chapter {
+  title: string;
+  urls: {
+    name: string;
+    url: string;
+  }[];
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionDetail struct {
+	Title       string                  `json:"title"`
+	Cover       string                  `json:"cover"`
+	Desc        string                  `json:"desc,omitempty"`
+	Description string                  `json:"description,omitempty"`
+	Chapters    []ExtensionEpisodeGroup `json:"chapters,omitempty"`
+	Headers     map[string]string       `json:"headers,omitempty"`
+}
+
+type ExtensionEpisodeGroup struct {
+	Title string   `json:"title"`
+	URLs  []string `json:"urls,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="Sample response"
+{
+  "title": "One Piece",
+  "cover": "https://example.com/covers/one-piece.jpg",
+  "desc": "Gol D. Roger was known as the Pirate King...",
+  "chapters": [
+    {
+      "title": "East Blue",
+      "urls": ["https://example.com/one-piece/ep/1", "..."]
+    },
+    {
+      "title": "Alabasta",
+      "urls": ["https://example.com/one-piece/ep/62", "..."]
+    }
+  ]
+}
+```
+
+### Watch — returned by `watch` (V2 mirror list)
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface WatchList {
+  title?: string;
+  url?: string;
+  type?: string;
+  groups?: {
+    title: string;
+    mirrors: {
+      name: string;
+      url: string;
+      headers?: { [key: string]: string };
+    }[];
+  }[];
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionWatch struct {
+	Title  string                 `json:"title"`
+	URL    string                 `json:"url"`
+	Type   string                 `json:"type"`
+	Groups []ExtensionMirrorGroup `json:"groups,omitempty"`
+}
+
+type ExtensionMirrorGroup struct {
+	Title   string            `json:"title"`
+	Mirrors []ExtensionMirror `json:"mirrors,omitempty"`
+}
+
+type ExtensionMirror struct {
+	Name    string            `json:"name"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="Sample response"
+{
+  "title": "One Piece Episode 1",
+  "url": "https://example.com/one-piece/ep/1",
+  "type": "bangumi",
+  "groups": [
+    {
+      "title": "Sub",
+      "mirrors": [
+        { "name": "CDN 1", "url": "https://cdn1.example.com/video.m3u8" },
+        { "name": "CDN 2", "url": "https://cdn2.example.com/video.m3u8" }
+      ]
+    }
+  ]
+}
+```
+
+### BangumiWatch — returned by `mirror` (bangumi)
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface BangumiWatch {
+  type: "hls" | "mp4" | "torrent" | "magnet";
+  url: string;
+  headers?: { [key: string]: string };
+  audioTrack?: string;
+  subtitles?: { language?: string; title: string; url: string }[];
+  tlsConfig?: {
+    profile: string;
+    userAgent?: string;
+    disableRedirect?: boolean;
+    insecureSkipVerify?: boolean;
+  };
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionBangumiWatchMirror struct {
+	Type       BangumiWatchType                      `json:"type"`
+	URL        string                                `json:"url"`
+	Headers    map[string]string                     `json:"headers,omitempty"`
+	Subtitles  []ExtensionBangumiWatchMirrorSubtitle `json:"subtitles,omitempty"`
+	AudioTrack string                                `json:"audioTrack,omitempty"`
+	TLSConfig  *TLSConfig                            `json:"tlsConfig,omitempty"`
+}
+
+type ExtensionBangumiWatchMirrorSubtitle struct {
+	Language *string `json:"language,omitempty"`
+	Title    string  `json:"title"`
+	URL      string  `json:"url"`
+}
+
+type TLSConfig struct {
+	Profile            string `json:"profile"`
+	UserAgent          string `json:"userAgent,omitempty"`
+	DisableRedirect    bool   `json:"disableRedirect,omitempty"`
+	InsecureSkipVerify bool   `json:"insecureSkipVerify,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="HLS mirror with subtitles and TLS fingerprinting"
+{
+  "type": "hls",
+  "url": "https://cdn.example.com/video.m3u8",
+  "headers": { "Referer": "https://example.com/" },
+  "subtitles": [
+    { "language": "en", "title": "English", "url": "https://cdn.example.com/subs/en.vtt" },
+    { "language": "zh", "title": "中文", "url": "https://cdn.example.com/subs/zh.vtt" }
+  ],
+  "audioTrack": "ja",
+  "tlsConfig": { "profile": "chrome_133", "insecureSkipVerify": true }
+}
+```
+
+```json title="Torrent mirror"
+{ "type": "torrent", "url": "https://example.com/files/ep1.torrent" }
+```
+
+```json title="Magnet mirror"
+{ "type": "magnet", "url": "magnet:?xt=urn:btih:abc123def456&dn=One+Piece+EP1" }
+```
+
+:::note
+When `tlsConfig` is set, the backend rewrites every URL (main + subtitles) into a localhost proxy URL like `http://127.0.0.1:3000/proxy/video.m3u8?__u=<encoded>`. Extension authors always return **raw upstream URLs** — never pre-proxied URLs.
+:::
+
+For torrent/magnet content types, the URL carries the raw `.torrent` link or `magnet:` URI. Torrent resolution is handled by the frontend or a separate backend endpoint.
+
+### MangaWatch — returned by `mirror` (manga)
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface MangaWatch {
+  urls: string[];
+  headers?: { [key: string]: string };
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionMangaWatchMirror struct {
+	URLs    []string          `json:"urls"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="Sample response"
+{
+  "urls": [
+    "https://example.com/manga/ch1/p1.jpg",
+    "https://example.com/manga/ch1/p2.jpg",
+    "https://example.com/manga/ch1/p3.jpg"
+  ],
+  "headers": { "Referer": "https://example.com/" }
+}
+```
+
+### FikushonWatch — returned by `mirror` (fikushon)
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface FikushonWatch {
+  content: string[];
+  title: string;
+  subtitle?: string;
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionFikushonWatchMirror struct {
+	Content  []string `json:"content"`
+	Title    string   `json:"title"`
+	Subtitle string   `json:"subtitle,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="Sample response"
+{
+  "content": [
+    "It was a dark and stormy night...",
+    "The hero stepped forward.",
+    "And so the journey began."
+  ],
+  "title": "My Novel",
+  "subtitle": "Chapter 1"
+}
+```
+
+### AllMirror — returned by `watch` (`@type all`)
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+// Only used for @type all extensions.
+// One of manga / fikushon / bangumi will be populated.
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionAllMirror struct {
+	Manga    *ExtensionMangaWatchMirror    `json:"manga,omitempty"`
+	Fikushon *ExtensionFikushonWatchMirror `json:"fikushon,omitempty"`
+	Bangumi  *ExtensionBangumiWatchMirror  `json:"bangumi,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+Only one member is populated per item.
+
+## Data Formats (V1, legacy)
+
+Legacy V1 extensions are written as `class extends Extension`; `watch()` returns the final playback shape directly, with no `mirror()` step. The return structures are the same as the V2 `BangumiWatch` / `MangaWatch` / `FikushonWatch` above — only the `watch` contract differs:
+
+```javascript
+// V1 entry points (compatibility reference)
+class Extension {
+  latest(page) { /* ... */ }
+  search(kw, page, filter) { /* ... */ }   // V1 receives filter too; may be ignored
+  detail(url) { /* ... */ }
+  watch(url) {
+    // returns the final playback shape directly, e.g.:
+    return { type: "hls", url: "https://.../a.m3u8", headers: {} };
+    // or manga: { urls: [...] } / fikushon: { content: [...], title, subtitle }
+  }
+  load() { /* ... */ }
+}
+```
+
+:::caution
+V1 is no longer recommended for new extensions; new extensions should use V2 uniformly (see [JavaScript Extensions](/en/developer/js/1-get-started/) and [Go Extensions](/en/developer/go/1-get-started/)).
+:::

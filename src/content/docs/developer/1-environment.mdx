@@ -1,6 +1,51 @@
 ---
-title: 环境搭建
+title: 環境搭建
+description: Miru Alpha 插件開發環境（JavaScript / Go）
 ---
 
-在开发 Miru 的扩展时只需要安装有 Miru 的 [Windows](/download/) 客户端，但其实 Android 端也是可以开发的，只是不能看到扩展输出的日志不好进行调试。
-最好使用 [VsCode](https://code.visualstudio.com/) 来进行代码编辑。
+Miru Alpha 的插件支持 **JavaScript（goja）** 與 **Go（Scriggo）** 兩種語言，下面是各自推薦的開發環境。
+
+## JavaScript 插件
+
+### 客戶端
+
+開發 JS 插件只需安裝 Miru 的 [客戶端](/download/)（Windows / Android / Linux）。客戶端內置 goja 引擎，可直接加載 `.js` 插件並實時熱重載；Android 端也能開發，只是看不到插件輸出的日誌，調試不如桌面端方便。
+
+### 編輯器
+
+推薦使用 [VSCode](https://code.visualstudio.com/) 編輯代碼，配合 JavaScript 語法高亮與 ESLint 即可。
+
+### 調試
+
+在客戶端「插件」頁面導入 `.js` 文件後，修改文件會被自動監聽並重新編譯，無需重啟客戶端。
+
+## Go 插件
+
+Go 插件通過 [Scriggo](https://github.com/open2b/scriggo) 引擎編譯運行，開發需要本地的 Go 工具鏈。
+
+### 工具鏈
+
+- 安裝 [Go](https://go.dev/dl/)（建議 1.22+）。
+- 推薦使用 [VSCode](https://code.visualstudio.com/) 或 [GoLand](https://www.jetbrains.com/go/) 編輯，並安裝 Go 官方插件獲得語法提示。
+- 引入官方 SDK：
+
+```bash
+go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
+```
+
+### 本地驗證
+
+可以把插件放到 `miru-core` 的 Go 插件目錄下，用倉庫自帶的測試驅動入口函數（`Search` / `Latest` / `Detail` / `Watch` / `Mirror`）來確認接線是否正確：
+
+```bash
+go test ./pkg/extension/golang/extensions/example/...
+```
+
+### 後端與前端
+
+完整的 Miru Alpha 由兩部分組成：
+
+- 後端 **miru-core**（Go）：負責運行插件、網絡請求與代理，本地可用 `make run` / `go run ./cmd` 啟動。
+- 前端 **Flutter App**：負責界面與播放，倉庫位於 [miru-alpha](https://github.com/miru-project/miru-alpha)。
+
+建議同時克隆後端與前端倉庫以便聯調。

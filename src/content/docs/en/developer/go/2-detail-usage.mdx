@@ -1,0 +1,320 @@
+---
+title: Detail Usage
+description: Go extension sdk usage, return types, complete example, and Scriggo limitations
+---
+
+This page goes deep on the Go extension `sdk` usage, return types, complete example, Scriggo limitations, and importable packages. Entry-point declaration is on [Get Started](/en/developer/go/1-get-started/); the two run modes are on [Running with Native Go](/en/developer/go/3-running-native/) and [Running with Scriggo](/en/developer/go/4-running-scriggo/).
+
+## Return Type Reference
+
+The `sdk` package exports the following types directly (all are aliases of miru-core internal types and safe to pass across the Scriggo/host boundary):
+
+| Type | Purpose |
+| :- | :- |
+| `sdk.ExtensionListItem` | List item: `Title` / `URL` / `Cover` / `Update` / `Image` / `Type` / `Headers` |
+| `sdk.ExtensionDetail` | Detail: `Title` / `URL` / `Cover` / `Desc` / `Description` / `Chapters []ExtensionEpisodeGroup` / `Headers` (`Desc` and `Description` are interchangeable) |
+| `sdk.ExtensionEpisodeGroup` | Chapter group inside detail: `Title` + `URLs []string` |
+| `sdk.ExtensionWatch` | Generic `Watch` return: grouped mirror list `Groups []ExtensionMirrorGroup` |
+| `sdk.ExtensionMirrorGroup` / `sdk.ExtensionMirror` | Mirror group / single mirror: `Name` / `URL` / `Headers` |
+| `sdk.ExtensionAllMirror` | `Watch` return for `@type all`: `Manga` / `Fikushon` / `Bangumi` members |
+| `sdk.ExtensionMangaWatchMirror` | Manga: `URLs []string` + `Headers` |
+| `sdk.ExtensionFikushonWatchMirror` | Novel: `Content []string` + `Title` + `Subtitle` |
+| `sdk.ExtensionBangumiWatchMirror` | Anime: `Type` (hls/mp4/torrent/magnet) / `URL` / `Subtitles` / `Headers` / `AudioTrack` / `TLSConfig` |
+| `sdk.ExtensionBangumiWatchMirrorSubtitle` | Subtitle: `Language` / `Title` / `URL` |
+| `sdk.TLSConfig` | Browser-fingerprint request config: `Profile` / `UserAgent` / `DisableRedirect` / `InsecureSkipVerify` |
+
+Content-type constants: `sdk.HLS`, `sdk.MP4`, `sdk.Magnet` (note there is no `sdk.Torrent` constant — the torrent content-type string is `"torrent"` and the URL carries the raw `.torrent` link or `magnet:` URI).
+
+## Requests and Cache
+
+```go
+// HTTP request: returns body / status code / error string
+body, status, errStr := sdk.Fetch("https://example.com/api", "GET", map[string]string{
+    "User-Agent": "Miru",
+}, "", nil)
+
+// Browser-fingerprint (tls-client) request, to bypass Cloudflare etc.
+body, _, _ = sdk.Fetch(url, "GET", headers, "", &sdk.TLSConfig{Profile: "chrome_133"})
+
+// For mirror URLs, set TLSConfig on ExtensionBangumiWatchMirror and the
+// backend auto-proxies all URLs. Raw .torrent / magnet: URLs are passed
+// through as-is (no TLSConfig needed).
+
+// Persist state across functions (each request recompiles a fresh Scriggo VM)
+sdk.SaveCache("key", value)
+v, ok := sdk.GetCache("key")
+```
+
+## TLS Fingerprinting and Proxy
+
+Many video streaming sites use Cloudflare or similar anti-bot services that reject
+Go's default TLS fingerprint. Miru-core solves this with **tls-client**, a library
+that impersonates real browser TLS handshakes (JA3, HTTP/2 settings, etc.). All
+networking from a Go extension goes through the backend — the Flutter client never
+connects directly to upstream CDNs.
+
+### The problem
+
+Go's `net/http` produces a distinctive TLS fingerprint that Cloudflare and other
+CDNs instantly recognize and block. Extensions that scrape these sites need a way
+to make requests that look like they come from a real Chrome browser.
+
+### Using `TLSConfig`
+
+`TLSConfig` can be used in two different contexts — they are **not** interchangeable alternatives. Each serves a distinct purpose:
+
+| Context | Purpose | How it works |
+| :-- | :-- | :-- |
+| **On a mirror** (`ExtensionBangumiWatchMirror.TLSConfig`) | Proxy video playback streams | The backend rewrites **all** URLs (main + subtitles) in the mirror into localhost proxy URLs. The Flutter player fetches via the backend, which uses tls-client to reach upstream. |
+| **With `sdk.Fetch`** | Make HTTP requests during `Detail()` / `Search()` | The backend performs a single server-side request with the specified TLS fingerprint and returns the response body directly to your code. |
+
+:::caution[All URLs inside mirrors are raw and unproxied]
+When returning a mirror from `Mirror()`, always provide **raw upstream URLs**.
+If TLS fingerprinting is needed, set the `TLSConfig` field on the mirror struct
+and the backend handles proxying automatically.
+:::
+
+### How proxy URLs work
+
+When the backend rewrites a URL via `TLSConfig` on the mirror, it produces a
+host-relative proxy URL like:
+
+```
+http://127.0.0.1:3000/proxy/video.m3u8?__u=<base64-encoded-raw-url>&__h=<base64-encoded-headers>
+```
+
+The Flutter video player requests this localhost URL. The backend:
+1. Decodes the original URL and headers from the query parameters
+2. Fetches the upstream resource using tls-client with the configured fingerprint
+3. Streams the response back to the player
+
+This means the Flutter client **never** talks to the upstream CDN directly — all
+TLS fingerprinting, CORS, and hotlink-protection issues are handled server-side.
+
+### When NOT to use TLS fingerprinting
+
+- **Torrent / Magnet URLs**: For `type: "torrent"` or `type: "magnet"`, the URL
+  carries the raw `.torrent` link or `magnet:` URI. Do **not** set `TLSConfig` on
+  these — torrent resolution is handled by the frontend or a separate backend
+  endpoint, not by the mirror proxy.
+
+## Using the `sdk` package in Scriggo (worked examples)
+
+The snippets below put the `sdk` calls above into real entry functions. The `sdk` package is injected when the Scriggo VM starts, so just `import` and call it.
+
+### Fetch with TLSConfig (scraping a detail page)
+
+```go
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+
+func Detail(pkg, url string) (*sdk.ExtensionDetail, error) {
+    // Plain request: body is the response body, status is the code, errStr is an error message
+    body, status, errStr := sdk.Fetch(url, "GET", map[string]string{
+        "User-Agent": "Mozilla/5.0",
+        "Referer":    "https://example.com/",
+    }, "", nil)
+    if errStr != "" {
+        return nil, fmt.Errorf("fetch failed (status %d): %s", status, errStr)
+    }
+
+    // To bypass Cloudflare / fingerprint checks, add a TLSConfig
+    body, _, _ = sdk.Fetch(url, "GET", headers, "", &sdk.TLSConfig{
+        Profile:            "chrome_133",
+        InsecureSkipVerify: true,
+    })
+
+    // For cross-origin media, URLs in Chapters[].URLs are fetched by the
+    // frontend via the proxy endpoint when TLSConfig is set on the mirror
+
+    return &sdk.ExtensionDetail{
+        Title:   "Example",
+        Cover:   "https://example.com/cover.jpg",
+        Desc:    body,
+        Chapters: []sdk.ExtensionEpisodeGroup{
+            {Title: "Ep 1", URLs: []string{"https://cdn.example.com/a.m3u8"}},
+        },
+    }, nil
+}
+```
+
+### Torrent / Magnet mirror (raw URL passthrough)
+
+For torrent or magnet content, the extension simply returns the raw `.torrent` link or `magnet:` URI. No parsing or resolution is needed — the frontend handles it.
+
+```go
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) {
+    // Torrent file URL — just pass it through as-is
+    return &sdk.ExtensionBangumiWatchMirror{
+        Type: sdk.HLS, // or the raw string "torrent" / "magnet"
+        URL:  "https://example.com/files/ep1.torrent",
+    }, nil
+
+    // Magnet link
+    return &sdk.ExtensionBangumiWatchMirror{
+        Type: sdk.Magnet,
+        URL:  "magnet:?xt=urn:btih:abc123def456&dn=One+Piece+EP1",
+    }, nil
+}
+```
+
+### TLSConfig on Mirror (auto-proxy with TLS fingerprint)
+
+For HLS/MP4 streams that need TLS fingerprinting (e.g. Cloudflare-fronted CDNs), set `TLSConfig` on the mirror struct. The backend automatically rewrites every URL into a proxy URL:
+
+```go
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) {
+    // The backend will auto-proxy this URL with chrome_133 TLS fingerprint
+    return &sdk.ExtensionBangumiWatchMirror{
+        Type: sdk.HLS,
+        URL:  "https://cdn.example.com/video.m3u8",
+        Headers: map[string]string{
+            "Referer": "https://example.com/",
+        },
+        TLSConfig: &sdk.TLSConfig{
+            Profile: "chrome_133", // backend rewrites all URLs to go through /proxy/
+        },
+        Subtitles: []sdk.ExtensionBangumiWatchMirrorSubtitle{
+            {Language: "en", Title: "English", URL: "https://cdn.example.com/subs/en.vtt"},
+        },
+    }, nil
+}
+```
+
+The Flutter client receives proxy URLs like `http://127.0.0.1:3000/proxy/video.m3u8?__u=<encoded>`, so the video player talks only to localhost — all proxying and TLS fingerprinting is handled server-side.
+
+### SaveCache / GetCache (persisting state across functions)
+
+```go
+func Search(pkg, kw string, page int, filter string) ([]sdk.ExtensionListItem, error) {
+    token, ok := sdk.GetCache("token")
+    if !ok {
+        // Log in on first call and cache the token for later calls
+        body, _, _ := sdk.Fetch("https://example.com/login", "POST", nil, "", nil)
+        token = body // parse the real token in practice
+        sdk.SaveCache("token", token)
+    }
+    body, _, _ := sdk.Fetch("https://example.com/search?kw="+kw, "GET",
+        map[string]string{"Authorization": token}, "", nil)
+    // ...parse body into []sdk.ExtensionListItem
+    return nil, nil
+}
+```
+
+:::tip
+Every time the host calls an entry function it recompiles and runs a fresh Scriggo VM, so local variables are not preserved across calls. Anything you must reuse (tokens, cookies, ...) must go through `sdk.SaveCache` / `sdk.GetCache` (values are `string`).
+:::
+
+## Complete Example
+
+```go
+// ==MiruExtension==
+// @name         Example
+// @version      v0.1.0
+// @author       Miru
+// @license      MIT
+// @lang         all
+// @icon         https://example.com/icon.png
+// @package      example
+// @type         all
+// @webSite      https://example.com
+// ==/MiruExtension==
+
+package example
+
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+
+func Search(pkg, kw string, page int, filter string) ([]sdk.ExtensionListItem, error) {
+    return []sdk.ExtensionListItem{
+        {Title: "Example 1", URL: "https://example.com/1", Cover: "https://example.com/1.jpg", Type: "manga"},
+    }, nil
+}
+
+func Latest(pkg string, page int) ([]sdk.ExtensionListItem, error) {
+    return []sdk.ExtensionListItem{
+        {Title: "Latest 1", URL: "https://example.com/latest/1", Cover: "https://example.com/latest/1.jpg", Type: "manga"},
+    }, nil
+}
+
+func Detail(pkg, url string) (*sdk.ExtensionDetail, error) {
+    return &sdk.ExtensionDetail{Title: "Detail", Desc: "Description", URL: url}, nil
+}
+
+func Watch(pkg, url string) (*sdk.ExtensionAllMirror, error) {
+    return &sdk.ExtensionAllMirror{
+        Manga: &sdk.ExtensionMangaWatchMirror{URLs: []string{"https://example.com/1.jpg"}},
+        Fikushon: &sdk.ExtensionFikushonWatchMirror{
+            Title:   "Chapter 1",
+            Content: []string{"Paragraph one.", "Paragraph two."},
+        },
+        Bangumi: &sdk.ExtensionBangumiWatchMirror{Type: sdk.HLS, URL: url},
+    }, nil
+}
+
+// Mirror resolves the user-selected mirror into the final per-type playback shape
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) {
+    return &sdk.ExtensionBangumiWatchMirror{Type: sdk.HLS, URL: url}, nil
+}
+```
+
+## Scriggo Limitations
+
+Miru's Go extensions are compiled and run by the [Scriggo](https://scriggo.com/limitations) engine, which is not a full Go compiler but an interpreter designed for "embedding scripts in Go". Keep the following limitations in mind (full list in the Scriggo docs):
+
+### Features not yet supported (under development)
+
+- **Method declarations**: you cannot define methods on types; only package-level functions.
+- **Interface type definitions**: you cannot write `type X interface { ... }` to define your own interfaces.
+- **Assigning to non-variables in `for range`**: e.g. `for i, (&s).field = range ...` is unsupported.
+- **Importing `unsafe` / `runtime`**: Scriggo cannot `import "unsafe"` or `import "runtime"`.
+- **Labeled `continue` / `break`**: `label:` jumps are unsupported.
+- **Compiling non-main packages without importing them**: an extension file is usually a standalone package and cannot `import` and compile another extension package directly.
+
+### Limitations from gc interoperability
+
+- **`reflect` cannot see Scriggo-defined types correctly**: e.g. when `v` is a Scriggo-defined type, `fmt.Printf("%T", v)` prints the underlying type name it was wrapped in, not the name you defined.
+- **Unexported fields of Scriggo structs are still reachable by native `reflect`**: they carry a special prefix to avoid accidental access but cannot be mutated via `reflect`.
+- **Struct embedding**: except for interfaces, if an embedded type has methods it must be the **first field** of the struct (limited by `reflect.StructOf`).
+- **A `select` supports at most 65536 cases**.
+- **Native packages must be registered in `packages.go` to be imported**: only packages the miru-core backend already uses and has exported are available; you cannot pull in arbitrary third-party packages from an extension.
+- **Types are not garbage collected** (see golang/go#28783); in a long-running host avoid accumulating types without bound.
+
+### Performance-oriented hard limits
+
+To speed up interpreted execution, Scriggo caps each function (exceeding a cap fails compilation):
+
+| Limit | Cap |
+| :-: | :-: |
+| Integer / float / string / general registers per function | 127 each |
+| Function-literal declarations + unique function calls | 256 |
+| Distinct types available | 256 |
+| Unique predefined functions | 256 |
+| Integer / float constant values | 16384 each |
+| String constant values | 256 |
+| General values | 256 |
+
+### Practical advice for extension authoring
+
+- **Use only package-level functions and structs**: don't try to define methods or interface types; write plain `func`s.
+- **Avoid `reflect` / `fmt %T`**: read return shapes with the SDK-provided types rather than reflecting on custom types.
+- **Keep single-file complexity in check**: don't cram huge numbers of constants, types, or closures into one function; split into multiple entry functions when needed.
+- **Don't rely on `unsafe` / `runtime`**: route networking and proxying through `sdk.Fetch` / `TLSConfig` on mirrors, not low-level packages.
+- **Use `sdk.SaveCache` for state, not globals**: each request recompiles a fresh Scriggo VM, so package-level globals are not preserved across calls.
+
+## Importable Packages
+
+Scriggo extensions can only `import` packages that the **miru-core backend already uses and has exported** in [`pkg/extension/golang/packages.go`](https://github.com/miru-project/miru-core/blob/main/pkg/extension/golang/packages.go). This is because Scriggo needs native Go packages to be compiled into the host binary — an extension cannot pull in packages that are not already part of miru-core.
+
+The current exported list mainly includes:
+
+- Standard library: `fmt`, `strings`, `strconv`, `regexp`, `encoding/json`, `encoding/xml`, `encoding/base64`, `net/http`, `net/url`, `crypto/*`, `math`, `time`, `io`, `os`, `sync`, `reflect`, `sort`, `context`, `bufio`, `bytes`, `path/filepath`, `html`, `image`, etc. (full list per source).
+- Built-in miru packages:
+  - `github.com/miru-project/miru-core/pkg/extension/golang/sdk` — the extension dev SDK (requests, cache, ...).
+  - `github.com/miru-project/miru-core/pkg/extension/golang/runtime` — runtime helpers.
+- Third-party packages that miru-core already depends on: `github.com/bogdanfinn/tls-client` (browser-fingerprint requests), `github.com/PuerkitoBio/goquery` (HTML parsing), `structs`, etc.
+
+:::note
+**You cannot arbitrarily import any third-party package from an extension.** For example `import "github.com/some/random/pkg"` will fail to compile because that package is not part of the miru-core backend and therefore not exported in `packages.go`. `unsafe` / `runtime` are also off-limits in Scriggo (see above).
+
+If you genuinely need a package that is not yet exported, open a **new Issue** in the [miru-core repo](https://github.com/miru-project/miru-core) describing the need (package name, use case, why the SDK can't do it today); maintainers will evaluate adding it as a dependency of miru-core and registering it in `packages.go`.
+:::
+

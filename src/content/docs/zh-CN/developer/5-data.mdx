@@ -1,0 +1,376 @@
+---
+title: 数据格式（V2 / V1 旧版）
+description: Miru Alpha 扩展的入参与返回结构，V2 为当前标准、V1 为旧版兼容
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+本页定义每个扩展入口的**输入参数和返回结构**，与 [JavaScript 扩展 (V2)](/developer/js/1-get-started/) / [Go 扩展](/developer/go/1-get-started/) 中的入口函数一一对应。
+
+- **V2（当前标准）**：`watch()` 返回镜像列表，`mirror(url)` 再解析为下方的按类型播放结构。新扩展必须使用 V2。
+- **V1（旧版兼容）**：`watch()` 直接返回最终播放结构，没有 `mirror()` 步骤——详见页尾[数据格式（V1 旧版）](#数据格式v1-旧版)。仅存量扩展参考。
+
+:::tip
+V1 与 V2 的核心区别在 `watch`：V1 的 `watch()` **直接返回最终播放结构**；V2 的 `watch()` 返回**镜像列表**（`WatchList`），用户选好镜像后，前端再调用 `mirror(url)` 解析成下面的按类型播放结构（`BangumiWatch` / `MangaWatch` / `FikushonWatch`）。两种版本的**按类型播放结构本身完全一致**——差别只在 `watch` 的契约。
+:::
+
+## 方法参数（V2）
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+latest(page: number)
+search(kw: string, page: number, filter?: string)
+detail(url: string)
+watch(url: string)
+mirror(url: string)
+checkUpdate(url: string)
+unload() { }
+load(){}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+func Latest(pkg string, page int) ([]sdk.ExtensionListItem, error)
+func Search(pkg string, kw string, page int, filter string) ([]sdk.ExtensionListItem, error)
+func Detail(pkg, url string) (*sdk.ExtensionDetail, error)
+func Watch(pkg, url string) (*sdk.ExtensionWatch, error)
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error)
+func Load()
+```
+
+</TabItem>
+</Tabs>
+
+## 方法返回的数据（V2）
+
+### ListItem — `search` / `latest` 返回值
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface ListItem {
+  title: string;
+  url: string;
+  cover: string;
+  update?: string;
+  type?: string;
+  image?: string;
+  headers?: { [key: string]: string };
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionListItem struct {
+	Title   string            `json:"title"`
+	URL     string            `json:"url"`
+	Cover   string            `json:"cover"`
+	Update  string            `json:"update"`
+	Image   string            `json:"image,omitempty"`
+	Type    string            `json:"type,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="示例响应"
+{
+  "title": "One Piece",
+  "url": "https://example.com/one-piece",
+  "cover": "https://example.com/covers/one-piece.jpg",
+  "update": "EP 1122",
+  "type": "bangumi"
+}
+```
+
+### Detail — `detail` 返回值
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface Detail {
+  title: string;
+  cover: string;
+  desc?: string;
+  description?: string;
+  headers?: { [key: string]: string };
+  chapters?: Chapter[];
+}
+
+export interface Chapter {
+  title: string;
+  urls: {
+    name: string;
+    url: string;
+  }[];
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionDetail struct {
+	Title       string                  `json:"title"`
+	Cover       string                  `json:"cover"`
+	Desc        string                  `json:"desc,omitempty"`
+	Description string                  `json:"description,omitempty"`
+	Chapters    []ExtensionEpisodeGroup `json:"chapters,omitempty"`
+	Headers     map[string]string       `json:"headers,omitempty"`
+}
+
+type ExtensionEpisodeGroup struct {
+	Title string   `json:"title"`
+	URLs  []string `json:"urls,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="示例响应"
+{
+  "title": "One Piece",
+  "cover": "https://example.com/covers/one-piece.jpg",
+  "desc": "Gol D. Roger was known as the Pirate King...",
+  "chapters": [
+    {
+      "title": "East Blue",
+      "urls": ["https://example.com/one-piece/ep/1", "..."]
+    },
+    {
+      "title": "Alabasta",
+      "urls": ["https://example.com/one-piece/ep/62", "..."]
+    }
+  ]
+}
+```
+
+### Watch — `watch` 返回值（V2 镜像列表）
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface WatchList {
+  title?: string;
+  url?: string;
+  type?: string;
+  groups?: {
+    title: string;
+    mirrors: {
+      name: string;
+      url: string;
+      headers?: { [key: string]: string };
+    }[];
+  }[];
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionWatch struct {
+	Title  string                 `json:"title"`
+	URL    string                 `json:"url"`
+	Type   string                 `json:"type"`
+	Groups []ExtensionMirrorGroup `json:"groups,omitempty"`
+}
+
+type ExtensionMirrorGroup struct {
+	Title   string            `json:"title"`
+	Mirrors []ExtensionMirror `json:"mirrors,omitempty"`
+}
+
+type ExtensionMirror struct {
+	Name    string            `json:"name"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="示例响应"
+{
+  "title": "One Piece Episode 1",
+  "url": "https://example.com/one-piece/ep/1",
+  "type": "bangumi",
+  "groups": [
+    {
+      "title": "Sub",
+      "mirrors": [
+        { "name": "CDN 1", "url": "https://cdn1.example.com/video.m3u8" },
+        { "name": "CDN 2", "url": "https://cdn2.example.com/video.m3u8" }
+      ]
+    }
+  ]
+}
+```
+
+### BangumiWatch — `mirror` 返回值（bangumi）
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface BangumiWatch {
+  type: "hls" | "mp4" | "torrent" | "magnet";
+  url: string;
+  headers?: { [key: string]: string };
+  audioTrack?: string;
+  subtitles?: { language?: string; title: string; url: string }[];
+  tlsConfig?: {
+    profile: string;
+    userAgent?: string;
+    disableRedirect?: boolean;
+    insecureSkipVerify?: boolean;
+  };
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionBangumiWatchMirror struct {
+	Type       BangumiWatchType                      `json:"type"`
+	URL        string                                `json:"url"`
+	Headers    map[string]string                     `json:"headers,omitempty"`
+	Subtitles  []ExtensionBangumiWatchMirrorSubtitle `json:"subtitles,omitempty"`
+	AudioTrack string                                `json:"audioTrack,omitempty"`
+	TLSConfig  *TLSConfig                            `json:"tlsConfig,omitempty"`
+}
+
+type TLSConfig struct {
+	Profile            string `json:"profile"`
+	UserAgent          string `json:"userAgent,omitempty"`
+	DisableRedirect    bool   `json:"disableRedirect,omitempty"`
+	InsecureSkipVerify bool   `json:"insecureSkipVerify,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="带字幕和 TLS 指纹伪装的 HLS 镜像"
+{
+  "type": "hls",
+  "url": "https://cdn.example.com/video.m3u8",
+  "headers": { "Referer": "https://example.com/" },
+  "subtitles": [
+    { "language": "en", "title": "English", "url": "https://cdn.example.com/subs/en.vtt" }
+  ],
+  "tlsConfig": { "profile": "chrome_133" }
+}
+```
+
+```json title="Torrent 镜像"
+{ "type": "torrent", "url": "https://example.com/files/ep1.torrent" }
+```
+
+:::note
+设置 `tlsConfig` 后，后端会自动将镜像中的所有 URL 改写为 localhost 代理 URL。扩展作者始终返回**原始上游 URL**。
+:::
+
+### MangaWatch / FikushonWatch
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+export interface MangaWatch {
+  urls: string[];
+  headers?: { [key: string]: string };
+}
+
+export interface FikushonWatch {
+  content: string[];
+  title: string;
+  subtitle?: string;
+}
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionMangaWatchMirror struct {
+	URLs    []string          `json:"urls"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+type ExtensionFikushonWatchMirror struct {
+	Content  []string `json:"content"`
+	Title    string   `json:"title"`
+	Subtitle string   `json:"subtitle,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+```json title="漫画镜像"
+{ "urls": ["https://example.com/manga/ch1/p1.jpg", "https://example.com/manga/ch1/p2.jpg"] }
+```
+
+```json title="小说镜像"
+{ "content": ["It was a dark and stormy night..."], "title": "My Novel", "subtitle": "Chapter 1" }
+```
+
+### AllMirror — `@type all` 使用
+
+<Tabs syncKey="lang">
+<TabItem label="JavaScript">
+
+```javascript
+// 仅 @type all 扩展使用，manga / fikushon / bangumi 三者只填充一个
+```
+
+</TabItem>
+<TabItem label="Go">
+
+```go
+type ExtensionAllMirror struct {
+	Manga    *ExtensionMangaWatchMirror    `json:"manga,omitempty"`
+	Fikushon *ExtensionFikushonWatchMirror `json:"fikushon,omitempty"`
+	Bangumi  *ExtensionBangumiWatchMirror  `json:"bangumi,omitempty"`
+}
+```
+
+</TabItem>
+</Tabs>
+
+每个项目只填充一个成员。
+
+## 数据格式（V1 旧版）
+
+旧版 V1 扩展以 `class extends Extension` 方式编写，`watch()` 直接返回最终播放结构，没有 `mirror()` 步骤。其返回结构与上面 V2 的 `BangumiWatch` / `MangaWatch` / `FikushonWatch` 一致，区别仅在 `watch` 的契约：
+
+```javascript
+class Extension {
+  latest(page) { /* ... */ }
+  search(kw, page, filter) { /* ... */ }   // V1 同样接收 filter 参数，可忽略
+  detail(url) { /* ... */ }
+  watch(url) {
+    return { type: "hls", url: "https://.../a.m3u8", headers: {} };
+  }
+  load() { /* ... */ }
+}
+```
+
+:::caution
+V1 已不再推荐用于新扩展；新扩展请统一使用 V2（见 [JavaScript 扩展](/developer/js/1-get-started/) 与 [Go 扩展](/developer/go/1-get-started/)）。
+:::

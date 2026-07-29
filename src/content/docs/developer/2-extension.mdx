@@ -1,104 +1,51 @@
 ---
-title: 开始开发
-description: 开始使用 Miru
+title: 開始開發
+description: Miru Alpha 插件開發指南（JavaScript / Go）
 ---
 
-开发扩展需要明白 Javascript 的正则表达式如果你不熟悉正则表达式可以先学习一下 《[正则表达式和字符串的方法](https://zh.javascript.info/regexp-methods)》 和 《[正则表达式 30 分钟入门教程](https://deerchao.net/tutorials/regex/regex.htm)》。
+Miru Alpha 的插件系統同時支持 **JavaScript** 與 **Go** 兩種語言運行時：
 
-本文档默认你已经按照 [开发环境](/developer/1-environment/) 配置好了开发环境。
+- **JavaScript 運行時**：基於 [goja](https://github.com/dop251/goja)（純 Go 實現的 ECMAScript 引擎），插件文件後綴為 `.js`。
+- **Go 運行時**：基於 [Scriggo](https://github.com/open2b/scriggo)（Go 語言的模板/腳本引擎），插件文件後綴為 `.go`。
 
-## 快速开始
+兩種插件使用同一套元數據與數據返回結構，前端對兩者一視同仁。開發插件需要一定的 JavaScript 或 Go 基礎，以及正則表達式知識。如果還不熟悉正則表達式，可以先學習 《[正則表達式和字符串的方法](https://zh.javascript.info/regexp-methods)》 與 《[正則表達式 30 分鐘入門教程](https://deerchao.net/tutorials/regex/regex.htm)》。
 
-### 创建扩展文件
+本文檔默認你已按 [開發環境](/developer/1-environment/) 配置好環境。
 
-请在 Windows 的扩展加载目录中创建一个和包名一样的 js 文件。
+## 插件元數據
 
-:::tip
-你可以切换到扩展页面
-![扩展加载目录](./images/1689866233139.png)
-再点击右上角的导入按钮
-![扩展加载目录](./images/1689866249425.png)
-就可以快速的定位到扩展目录
-:::
-
-### 编写元数据
-
-元数据中包含了扩展的基本信息，例如包名、版本、作者、描述等。在扩展文件中编写元数据，必须在元数据开始与结束使用 `// ==MiruExtension==` 注释。
-
-元数据示例：
+無論是 JS 還是 Go 插件，文件頂部都必須用註釋包裹一份元數據，格式為 `// ==MiruExtension==` … `// ==/MiruExtension==`。
 
 ```text
-
 // ==MiruExtension==
-// @name  Extension Name
-// @version v0.0.1
-// @author Xxxx
-// @lang zh-cn
-// @icon https://xxx.xxx.xxx/xxx.png
-// @package xxx.xxx.xxx
-// @type bangumi
-// @webSite https://xxx.xxx.xxx/
+// @name         My Extension
+// @version      v0.0.1
+// @author       YourName
+// @license      MIT
+// @lang         zh-cn
+// @icon         https://example.com/icon.png
+// @package      my.extension
+// @type         bangumi
+// @webSite      https://example.com/
+// @apiVersion   2
 // ==/MiruExtension==
-
 ```
 
 :::tip
-其中 `@name`、`@version`、`@webSite`、`@package`、`@type` 为必填项，其他为可选项。
-`@webSite` 是扩展的目标地址 `@package` 必须和扩展文件名一致。
-
-`@type` 是一个必填项，用于说明扩展的类型。
-| @type | | |
-| :-: | :-: | :-: |
-| | bangumi | 动画 |
-| | manga| 漫画 |
-| | fikushon | 小说 |
+必填字段：`@name`、`@version`、`@package`、`@webSite`、`@type`、`@apiVersion`。
+- `@package` **必須**與插件文件名一致（不含 `.js` / `.go` 後綴）。
+- `@type` 決定插件的內容類型，可選值：`bangumi`（動畫）、`manga`（漫畫）、`fikushon`（小說）、`all`（三者合一）。
+- `@apiVersion`：JS 插件填 `2` 使用新版 API（推薦）；Go 插件默認即為 V2，可省略。
+- `@license`、`@lang`、`@icon`、`@description`、`@tags` 等為可選項。
 :::
 
-### 继承 Extension 类
+## 選擇運行時
 
-在扩展文件中暴露一个 类 并继承 `Extension` 类，例如：
+元數據寫好後，按你的語言選擇對應的開發指南，其中包含完整的入口函數、請求/緩存 API 與可運行示例：
 
-```javascript
-export default class extends Extension {}
-```
+- **JavaScript**：[JavaScript 插件 V2（goja）](/developer/js/1-get-started/)（推薦）；沿用舊寫法的請看 [JavaScript 插件 V1（舊版）](/developer/js/2-legacy-v1/)。
+- **Go**：[Go 插件（Scriggo）](/developer/go/1-get-started/)
 
-### 重写扩展内的方法
+返回值結構（列表項、詳情、按類型區分的播放結構等）統一在 [數據格式](/developer/5-data/) 中定義。
 
-在扩展类中重写 `Extension` 类中的方法，例如：
 
-```javascript
-export default class extends Extension {
-  async latest() {
-    // 最近更新
-  }
-  async search() {
-    // 搜索
-  }
-  async detail() {
-    // 详情
-  }
-  async watch() {
-    // 观看
-  }
-}
-```
-
-其中返回的数据都得按照 [数据格式](/developer/3-data/) 返回。
-请求数据可以使用 `this.request` 方法，例如：
-
-```javascript
-const res = await this.request({
-  url: "/xxx",
-  method: "GET",
-});
-```
-
-`this.request` 是通过代理的请求 如果不使用 `this.request` 将可能收到跨域错误（仅 Web）。
-
-### 提交到 `Miru 扩展仓库`
-
-请使用 `PR` 的方式来提交你的扩展到 `Miru 扩展仓库`，提交的 `PR` 需要包含你的扩展文件且**不需要** `index.json` 文件。
-
-## 例子
-
-可以前往 [Miru 官方仓库](https://miru-repo.0n0.dev)

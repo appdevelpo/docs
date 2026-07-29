@@ -1,0 +1,124 @@
+---
+title: JavaScript Extensions V1 (legacy)
+description: Develop Miru Alpha JavaScript extensions with the old class extends Extension style (no longer recommended)
+---
+
+:::caution[Legacy API — not recommended]
+New extensions should use [JavaScript Extensions V2 (goja)](/en/developer/js/1-get-started/). This page is kept only for existing extensions that still use `class extends Extension`. The core V1 vs V2 difference is in `watch()`: V1's `watch()` **returns the final playback URL directly** (no `mirror()` step), whereas V2's `watch()` returns a list of mirrors resolved later by `mirror()`.
+:::
+
+A V1 extension is an object that extends the host-injected `Extension` class. At load time the host rewrites `class X extends Extension` into `globalThis.Ext = class extends Extension {...}` and instantiates it. All request helpers live on `this`.
+
+## Entry Methods
+
+```javascript
+class Demo extends Extension {
+  // Recently updated (page starts at 1)
+  async latest(page) { /* ... */ }
+
+  // Search (V1 also receives filter; may be ignored)
+  async search(keyword, page, filter) { /* ... */ }
+
+  // Detail
+  async detail(url) { /* ... */ }
+
+  // Watch: returns the final playback shape directly (no mirror step)
+  async watch(url) { /* ... */ }
+
+  // Optional: popular / check update / load hook
+  async popular(page) { /* ... */ }
+  async checkUpdate(url) { /* ... */ }
+  async load() { /* runs once when the extension loads */ }
+}
+```
+
+:::tip
+Unimplemented methods default to `throw new Error("not implement ...")` and only error if actually called, so they don't affect the others.
+:::
+
+## Requests and DOM
+
+```javascript
+class Demo extends Extension {
+  async request(url, options) {
+    // relative to @webSite; auto JSON.parse's the response
+    const json = await this.request("/api/list?page=1");
+    // absolute URL request
+    const html = await this.rawRequest("https://example.com/page");
+    // parse HTML with linkedom (V1 also has require built in)
+    const { parseHTML } = require("linkedom");
+    const { document } = parseHTML(html);
+    const title = document.querySelector(".title")?.textContent;
+    return { json, title };
+  }
+}
+```
+
+`this` also exposes convenience methods `querySelector(content, selector)` / `querySelectorAll(content, selector)` / `getAttributeText(content, selector, attr)` (all backed by linkedom).
+
+## Complete Example (V1)
+
+```javascript
+// ==MiruExtension==
+// @name         Demo Bangumi (V1)
+// @package      demo.bangumi.v1
+// @author       Demo
+// @license      MIT
+// @lang         zh-cn
+// @icon         https://example.com/icon.png
+// @webSite      https://example.com/
+// @type         bangumi
+// ==/MiruExtension==  (note: V1 omits @apiVersion, or sets a non-2 value)
+
+class Demo extends Extension {
+  async latest(page) {
+    const json = await this.request(`/api/latest?page=${page}`);
+    return json.list.map((it) => ({
+      title: it.title,
+      url: it.id,
+      cover: it.cover,
+      update: it.update,
+    }));
+  }
+
+  async search(keyword, page) {
+    const json = await this.request(`/api/search?kw=${keyword}&page=${page}`);
+    return json.list.map((it) => ({
+      title: it.title,
+      url: it.id,
+      cover: it.cover,
+    }));
+  }
+
+  async detail(url) {
+    const json = await this.request(`/api/detail/${url}`);
+    return {
+      title: json.title,
+      cover: json.cover,
+      desc: json.desc,
+      chapters: json.episodes.map((ep) => ({
+        title: ep.name,
+        urls: ep.sources.map((s) => s.url),
+      })),
+    };
+  }
+
+  // V1: watch returns the final playback shape directly (here an hls link)
+  async watch(url) {
+    const json = await this.request(`/api/stream/${url}`);
+    return {
+      type: "hls", // hls | mp4 | torrent | magnet
+      url: json.playUrl,
+      headers: { Referer: "https://example.com/" },
+    };
+  }
+}
+```
+
+:::note
+V1's `watch()` return shape is identical to V2's `mirror()` return shape (see [Data Formats](/en/developer/5-data/)). The only difference is the call flow: V1 returns it in one step, V2 lists mirrors first and resolves via `mirror()`.
+:::
+
+## Submitting Extensions
+
+Submit your extension to the `Miru Extension Repository` via a PR. The PR must contain the extension source file and **does not need** the `index.json` file.

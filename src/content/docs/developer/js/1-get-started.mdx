@@ -1,0 +1,157 @@
+---
+title: 快速開始（V2）
+description: 使用 goja 引擎以 V2 API 開發 Miru Alpha 的 JavaScript 插件
+---
+
+Miru Alpha 的 JavaScript 插件由純 Go 實現的 [goja](https://github.com/dop251/goja) 引擎運行，插件文件後綴為 `.js`。本頁介紹 **V2（推薦）** 的完整 JS 插件寫法；通用元數據與數據返回格式見 [開始開發](/developer/2-extension/) 與 [數據格式](/developer/5-data/)。
+
+:::caution[舊版 V1 已不再推薦]
+仍在用 `class extends Extension` 舊寫法的插件請看 [JavaScript 插件 V1（舊版）](/developer/js/2-legacy-v1/)。**新插件請統一使用本頁的 V2 API**：`watch()` 返回鏡像列表、`mirror()` 解析最終地址，且與 Go 插件契約一致。
+:::
+
+## 創建插件文件
+
+在插件加載目錄中創建一個與包名同名的 `.js` 文件（例如 `my.extension.js`）。
+
+:::tip
+在客戶端切換到「插件」頁面，點擊右上角的導入按鈕即可快速定位到插件目錄。
+:::
+
+## 入口函數
+
+```javascript
+// V2：直接在模塊頂層聲明這些函數，無需類
+var latest = (page) => { /* 最近更新 */ };
+var search = (kw, page, filter) => { /* 搜索（filter 為可選篩選項） */ };
+var detail = (url) => { /* 詳情 */ };
+var watch = (url) => { /* 返回鏡像列表 */ };
+var mirror = (url) => { /* 解析最終播放地址 */ };
+var createFilter = (filter) => { /* 返回篩選項描述（可選，默認未實現） */ };
+var checkUpdate = () => { /* 檢查更新（可選） */ };
+async function load() { /* 插件加載時執行一次 */ }
+```
+
+:::tip
+宿主按固定簽名調用這些函數：`latest(page)`、`search(kw, page, filter)`、`detail(url)`、`watch(url)`、`mirror(url)`、`createFilter(filter)`。未實現的函數默認 `throw new Error("not implement ...")`，不影響其它函數；只有被實際調用時才會報錯。
+:::
+
+## 請求與緩存
+
+請求通過全局 `Miru` 對象發起：
+
+```javascript
+// request：把 url 拼到插件 @webSite 之後（相對地址），並自動嘗試 JSON.parse 響應
+const json = await Miru.request("/api/list?page=1");
+// rawRequest：使用完整地址，不會自動以 @webSite 拼接
+const html = await Miru.rawRequest("https://example.com/page");
+
+// 跨調用保存狀態（goja VM 每次執行後都會銷燬，狀態必須走緩存）。值一律以字符串存儲
+Miru.saveCache("token", "abc123");
+const token = Miru.getCache("token");
+
+// Miru 上還暴露了插件自身的元信息
+Miru.pkg; Miru.name; Miru.website;
+```
+
+`watch()` 在 V2 中**返回鏡像列表（而非最終地址）**，用戶選擇某個鏡像後，前端再調用 `mirror(url)` 解析出最終播放鏈接：
+
+```javascript
+var watch = (url) => {
+  const groups = {
+    "Server 1": [
+      { name: "Mirror 1", url: "https://m1.example.com/a.m3u8", headers: {} },
+      { name: "Mirror 2", url: "https://m2.example.com/a.m3u8", headers: {} },
+    ],
+  };
+  return { groups: Object.keys(groups).map((t) => ({ title: t, mirrors: groups[t] })) };
+};
+
+var mirror = (url) => ({
+  type: "hls",                 // hls | mp4 | torrent | magnet（內容類型，不是插件類型）
+  url,
+  headers: { "User-Agent": "Mozilla/5.0" },
+  // tlsConfig: { profile: "chrome_133" },  // Go 插件可用：後端自動代理並偽裝 TLS 指紋
+});
+```
+
+:::note
+V1 的 `watch()` 直接返回最終播放地址，沒有 `mirror()` 步驟；V2 的 `mirror()` 等價於 V1 的 `watch()`。若 V2 未實現 `mirror()`，宿主會把選中的鏡像地址原樣返回。舊版 V1 的完整寫法見 [JavaScript 插件 V1（舊版）](/developer/js/2-legacy-v1/)。
+
+`watch()` 接受的兩種結構：`{ groups: [{ title, mirrors: [{ name, url, headers }] }] }`（數組形式），或 `{ groups: { "Server 1": [...] } }`（以分組名為 key 的對象形式，推薦，與示例代碼一致）。
+:::
+
+## Node 模塊（require）
+
+goja 運行環境內置了 nodejs 風格的 `require`，插件可以直接加載宿主預置的模塊，無需自己打包依賴：
+
+```javascript
+const { parseHTML } = require("linkedom"); // 輕量 DOM 解析
+const CryptoJS = require("crypto-js");     // CryptoJS.MD5 / AES / ...
+const md5 = require("md5");                 // blueimp JavaScript-MD5：md5("str")
+const JSEncrypt = require("jsencrypt");     // RSA 加密：new JSEncrypt()
+const zlib = require("zlib");               // 壓縮/解壓（見下表）
+```
+
+可用模塊一覽：
+
+| 模塊 | 用途 / 導出 |
+| :- | :- |
+| `linkedom` | `parseHTML(html)` 返回 DOM（`document`/`querySelector` 等），用於抓取頁面。 |
+| `crypto-js` | `CryptoJS`（MD5、SHA、AES、DES、Base64、Hmac 等，與瀏覽器端 crypto-js 用法一致）。 |
+| `md5` | blueimp 的 `md5(string)` 函數。 |
+| `jsencrypt` | `JSEncrypt` 類（`new JSEncrypt()` + `setPublicKey` + `encrypt`）。 |
+| `zlib` | 同步壓縮/解壓：`gzipSync` / `gunzipSync` / `deflateSync` / `inflateSync` / `brotliCompressSync` / `brotliDecompressSync` / `zstdCompressSync` / `zstdDecompressSync`，返回 `Uint8Array`；`bytesFromBase64(str)` 把 base64 解碼為保留二進制的 `Uint8Array`。 |
+| `url` | nodejs `url` 模塊（`new URL()`、解析等）。 |
+| `console` | 調試輸出（`console.log` / `warn` / `error`），會轉發到 Miru 的開發者日誌。 |
+
+:::tip
+這些模塊由宿主**預編譯進 goja**，因此只能在 JS 插件裡 `require`，不能像在普通 Node 項目裡那樣安裝任意 npm 包。若需要某個尚未內置的庫，請向 miru-core 提 Issue 申請加入。
+:::
+
+此外運行環境中還有全局對象 `crypto`（`crypto.getRandomValues`，單次最多 65536 字節）。
+
+## 完整示例
+
+```javascript
+// ==MiruExtension==
+// @name         Demo Bangumi
+// @package      demo.bangumi
+// @author       Demo
+// @license      MIT
+// @lang         zh-cn
+// @icon         https://example.com/icon.png
+// @webSite      https://example.com/
+// @type         bangumi
+// @apiVersion   2
+// ==/MiruExtension==
+
+var latest = async (page) => {
+  const json = await Miru.request(`/api/latest?page=${page}`);
+  return json.list.map((it) => ({ title: it.title, url: it.id, cover: it.cover, update: it.update }));
+};
+
+var search = async (kw, page) => {
+  const json = await Miru.request(`/api/search?kw=${kw}&page=${page}`);
+  return json.list.map((it) => ({ title: it.title, url: it.id, cover: it.cover }));
+};
+
+var detail = async (url) => {
+  const json = await Miru.request(`/api/detail/${url}`);
+  return {
+    title: json.title,
+    cover: json.cover,
+    desc: json.desc,
+    chapters: json.episodes.map((ep) => ({ title: ep.name, urls: ep.sources.map((s) => s.url) })),
+  };
+};
+
+var watch = (url) => ({
+  groups: [{ title: "默認", mirrors: [{ name: "源", url, headers: {} }] }],
+});
+
+var mirror = (url) => ({ type: "mp4", url, headers: {} });
+```
+
+## 提交插件
+
+請通過 PR 將插件提交到 `Miru 插件倉庫`，PR 中需包含插件源文件，**不需要** `index.json`。

@@ -3,8 +3,9 @@ dist/
 # generated types
 .astro/
 
-# dependencies
+# Deno artifacts
 node_modules/
+deno.lock
 
 # logs
 npm-debug.log*

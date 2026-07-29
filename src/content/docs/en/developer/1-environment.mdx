@@ -1,6 +1,51 @@
 ---
 title: Environment Setup
+description: Miru Alpha extension development environment (JavaScript / Go)
 ---
 
-To develop extensions for Miru, you only need to have the Miru [Windows](/en/download/) client installed. However, it is also possible to develop on the Android platform, although it may be challenging to debug without being able to view extension output logs.
-It is recommended to use [VsCode](https://code.visualstudio.com/) for code editing.
+Miru Alpha extensions support **both JavaScript (goja)** and **Go (Scriggo)**. Below are the recommended setups for each.
+
+## JavaScript Extensions
+
+### Client
+
+To develop JS extensions you only need the Miru [client](/en/download/) (Windows / Android / Linux). The client bundles the goja engine, loads `.js` extensions, and hot-reloads them on change. Android works too, but you cannot see extension logs there, so debugging is easier on the desktop client.
+
+### Editor
+
+We recommend [VSCode](https://code.visualstudio.com/) with JavaScript syntax highlighting and ESLint.
+
+### Debugging
+
+After importing a `.js` file from the client's Extensions page, edits are watched and recompiled automatically — no client restart needed.
+
+## Go Extensions
+
+Go extensions are compiled and run by the [Scriggo](https://github.com/open2b/scriggo) engine, so you need a local Go toolchain.
+
+### Toolchain
+
+- Install [Go](https://go.dev/dl/) (1.22+ recommended).
+- Use [VSCode](https://code.visualstudio.com/) or [GoLand](https://www.jetbrains.com/go/) with the official Go plugin for completion and hints.
+- Pull in the official SDK:
+
+```bash
+go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
+```
+
+### Local Verification
+
+Place your extension in the `miru-core` Go extensions directory and drive its entry points (`Search` / `Latest` / `Detail` / `Watch` / `Mirror`) with the repo's own tests to confirm the wiring:
+
+```bash
+go test ./pkg/extension/golang/extensions/example/...
+```
+
+### Backend and Frontend
+
+A full Miru Alpha deployment has two parts:
+
+- Backend **miru-core** (Go): runs extensions, performs network requests, and proxies media. Run it locally with `make run` / `go run ./cmd`.
+- Frontend **Flutter App**: the UI and player, in the [miru-alpha](https://github.com/miru-project/miru-alpha) repository.
+
+It is recommended to clone both repos for end-to-end testing.

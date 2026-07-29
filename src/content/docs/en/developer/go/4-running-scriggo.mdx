@@ -1,0 +1,151 @@
+---
+title: Running with Scriggo
+description: How Miru compiles and runs a Go extension with the Scriggo engine at runtime (Stage 2)
+---
+
+This page covers **Stage 2 · Scriggo VM (runtime)**: how the host drives the extension you wrote in [Running with Native Go](/en/developer/go/3-running-native/).
+
+## Same source, executed by Scriggo at runtime
+
+The host reads `my.extension.go` from the extension directory, compiles it with the Scriggo engine, and invokes entry points by name (`Latest` / `Search` / `Detail` / `Watch` / `Mirror` / `Load`). This is the **exact same source** as Stage 1 — because the extension imports the SDK itself, the host compiles it as-is, with no rewriting or injected imports.
+
+## Runtime entry-point mapping
+
+| User action | Host call | Returns |
+| :- | :- | :- |
+| Browse "Recently updated" | `Latest(pkg, page)` | `[]sdk.ExtensionListItem` |
+| Search | `Search(pkg, kw, page, filter)` | `[]sdk.ExtensionListItem` |
+| Open detail | `Detail(pkg, url)` | `*sdk.ExtensionDetail` |
+| Click play | `Watch(pkg, url)` → `Mirror(pkg, url)` | `Watch` returns a mirror list (or `ExtensionAllMirror`); `Mirror` resolves the final playback shape |
+| Extension loads | `Load()` | optional, runs once on load |
+
+## Runtime notes
+
+- **Every call recompiles and runs a fresh Scriggo VM**: local variables and package-level globals are not preserved across calls. State you must reuse (tokens, cookies, ...) goes through `sdk.SaveCache` / `sdk.GetCache` (values are `string`).
+- **Only packages the backend already uses are importable**: packages you `import` must be part of the miru-core binary and exported in `packages.go` (see "Importable Packages" in [Detail Usage](/en/developer/go/2-detail-usage/)). Importing a package that is not registered in `packages.go` fails compilation.
+- **Scriggo limitations apply**: method declarations, interface definitions, some `for range` forms, etc. are unsupported — see "Scriggo Limitations" in [Detail Usage](/en/developer/go/2-detail-usage/).
+
+## Loading the extension in Miru
+
+Put `my.extension.go` into Miru's extension directory (click the import button in the top-right of the client's Extensions page to locate it quickly), then restart/refresh extensions to run it under Stage 2 (Scriggo). A PR to the extension repository only needs the source file — **no** `index.json`.
+
+## Test the extension directly under Scriggo
+
+Besides falling back to Stage 1's `go test`, you can **compile and invoke the extension with the Scriggo VM itself** to validate Stage 2 behavior — this is exactly what miru-core's runtime does, so it reproduces "compile failure / runtime error" most faithfully.
+
+### Approach 1: low-level API (matches TestDualStage)
+
+miru-core exposes `NewScriggoVM` / `Compile` / `Program.Call`: read the source, compile, and call by name:
+
+```go
+// scriggo_test.go —— in a test module that can import miru-core
+package myextension_test
+
+import (
+    "fmt"
+    "os"
+    "testing"
+
+    golang "github.com/miru-project/miru-core/pkg/extension/golang"
+)
+
+func TestUnderScriggo(t *testing.T) {
+    src, err := os.ReadFile("my.extension.go") // read the extension source
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    vm := golang.NewScriggoVM(nil)             // create the Scriggo VM
+    prog, err := vm.Compile("my.extension_Search", string(src))
+    if err != nil {
+        t.Fatalf("compile failed (this is the runtime 'compile extension' error): %v", err)
+    }
+
+    // Call the entry by name; arg order matches the host: pkg first, then business args
+    res, err := prog.Program.Call("Search", "my.extension", "naruto", 1, "")
+    if err != nil {
+        t.Fatalf("runtime error: %v", err)
+    }
+
+    // Call returns []any; the first element is your return value ([]sdk.ExtensionListItem here)
+    items, _ := res[0].([]interface{})
+    fmt.Printf("got %d items: %+v\n", len(items), items)
+}
+```
+
+Key points:
+- `vm.Compile(name, src)` — `name` is arbitrary; `src` is the **full text** of the `.go` file.
+- `prog.Program.Call("Search", args...)` returns `([]any, error)` — the same Scriggo compile/call path the host's `callExtension` uses, so **compile errors surface verbatim** (message starts with `compile extension`).
+- The return is `[]any`, indexed by the entry's return position: `res[0]` is the first return (e.g. `[]sdk.ExtensionListItem`), `res[1]` is the `error`.
+
+### Approach 2: high-level Runtime (mirrors the host load flow)
+
+To also mirror "parse metadata + run Load + call by name" exactly like the host, use `NewRuntime`:
+
+```go
+func TestUnderScriggoRuntime(t *testing.T) {
+    golang.ExtensionDir = "."             // extension dir (holds my.extension.go)
+    rt := golang.NewRuntime(golang.NewScriggoVM(nil))
+
+    ext, err := golang.ParseExtensionMetadata("my.extension")
+    if err != nil {
+        t.Fatal(err)
+    }
+    if err := rt.LoadExtension(ext); err != nil { // parse metadata + compile + run Load
+        t.Fatalf("load failed: %v", err)
+    }
+
+    res, err := rt.Call("Search", "my.extension", "naruto", 1, "") // call by name
+    if err != nil {
+        t.Fatalf("call failed: %v", err)
+    }
+    _ = res
+}
+```
+
+This is closest to how Miru actually runs: `LoadExtension` first (executes the `Load` entry and surfaces compile errors early), then `rt.Call` drives each entry.
+
+:::tip
+**Which to use?** Want to quickly reproduce "can Scriggo compile it / what does runtime say?" — Approach 1 is most direct. Want to validate "the exact load+call flow as inside Miru" — use Approach 2. Both are closer to Stage 2's real behavior than falling back to native Go.
+:::
+
+## Debugging (Scriggo runtime)
+
+Stage 2 has no breakpoint debugger; error messages come from the host's Scriggo compile/run wrapper. Understanding the error format locates problems fast.
+
+### Where errors come from
+
+The host (`callExtension` in `endpoint.go`) hands the extension source to Scriggo **as-is** to compile and invoke by name. Errors fall into two classes:
+
+- **Compile errors**: the source can't be compiled by Scriggo; the message starts with `compile extension <pkg>: ...`. Typical causes:
+  - Scriggo-unsupported syntax (method declarations, interface definitions, labeled `continue`/`break`, certain `for range` forms — see "Scriggo Limitations" in [Detail Usage](/en/developer/go/2-detail-usage/)).
+  - Importing a package not registered in `packages.go` (see "Importable Packages").
+  - Hitting a performance hard cap (per-function registers / types / constants exceeded).
+- **Runtime errors**: compilation succeeded but execution failed; the host wraps it with `withStackTrace` and returns a **stack trace**. Read the top of the stack (entry function + line) first, then go down to see which line panicked / returned an error.
+
+### Reading errors in the Miru client
+
+When an extension fails at runtime, the Miru client shows an error on the relevant action (detail / play / ...). Copy the full error text — especially a `compile extension ...` message or a line-numbered stack — and triage using the two classes above.
+
+### Isolate logic bugs by "falling back to Stage 1"
+
+At Scriggo runtime you can't see `fmt` output, and errors are less detailed than native Go. To locate a logic bug, **take the same source back to Stage 1**:
+
+```bash
+cd my.extension
+go test -run TestSearch -v   # reproduce with go test: wrong return shape, or network/parse failure?
+```
+
+- If Stage 1 `go test` also fails: it's **your logic** (parsing, field names, types) — fix it under native Go with Delve / `fmt`.
+- If Stage 1 passes but Stage 2 errors: it's almost certainly a **Scriggo limitation or un-exported package** issue (unsupported syntax / un-registered import / register-or-type cap) — check it against [Detail Usage](/en/developer/go/2-detail-usage/) point by point.
+
+### Common runtime pitfalls
+
+- **State lost across calls**: don't assume globals / previous call's locals persist — every call is a fresh Scriggo VM. Use `sdk.SaveCache` / `sdk.GetCache` for anything reusable.
+- **`reflect` / `fmt %T` can't see your custom types**: Scriggo-defined types show their underlying wrapped name under `reflect`; don't rely on it for type checks.
+- **`nil` vs zero value**: when returning a pointer (e.g. `*sdk.ExtensionDetail`) make sure it's non-nil, or host deserialization will fail.
+- **Oversized single function**: split huge constants / types / closures across multiple entry functions to avoid the performance hard caps.
+
+:::tip
+Because Stage 1 and Stage 2 share source and return shapes, an extension you verified with `go test` in [Running with Native Go](/en/developer/go/3-running-native/) will rarely differ at runtime. If a runtime error appears, first check for Scriggo-unsupported syntax or an import not registered in `packages.go`.
+:::

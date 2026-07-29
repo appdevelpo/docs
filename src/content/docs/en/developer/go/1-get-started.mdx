@@ -1,0 +1,40 @@
+---
+title: Get Started
+description: Develop Miru Alpha Go extensions with the Scriggo engine (metadata and entry points)
+---
+
+A Go extension is simply an ordinary Go source file (`.go`) that the host compiles and runs with the [Scriggo](https://github.com/open2b/scriggo) engine. It is a good fit when you need stronger typing, complex parsing, or access to the Go ecosystem.
+
+This page covers **creating the extension file and declaring entry points**. For the full `sdk` usage, return types, and Scriggo limitations, see [Detail Usage](/en/developer/go/2-detail-usage/). The two ways to drive the extension — local native Go and runtime Scriggo — are covered in [Running with Native Go](/en/developer/go/3-running-native/) and [Running with Scriggo](/en/developer/go/4-running-scriggo/). Shared metadata is in [Getting Started](/en/developer/2-extension/) and return shapes in [Data Formats](/en/developer/5-data/).
+
+## Create the Extension File
+
+Create a `.go` file named after your package, e.g. `my.extension.go`. It's a normal Go package; pull in the official SDK with `go get`:
+
+```bash
+go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
+```
+
+## Entry Points
+
+Go extensions expose entry points through **exported functions** that the host calls by name:
+
+```go
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+
+// Argument order: pkg string first, then the business arguments
+func Latest(pkg string, page int) ([]sdk.ExtensionListItem, error) { /* ... */ }
+func Search(pkg string, kw string, page int, filter string) ([]sdk.ExtensionListItem, error) { /* ... */ }
+func Detail(pkg, url string) (*sdk.ExtensionDetail, error) { /* ... */ }
+func Watch(pkg, url string) (*sdk.ExtensionWatch, error) { /* mirror list (or ExtensionAllMirror for @type all) */ }
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) { /* resolve final playback shape */ }
+func Load() { /* runs once when the extension loads (optional) */ }
+```
+
+:::tip
+`Watch` accepts only two return shapes: the generic V2 `ExtensionWatch` (grouped mirror list, resolved later by `Mirror`), or the combined `ExtensionAllMirror` (only for `@type all`, holding the manga/fikushon/bangumi members). **A standalone per-type watch shape (manga/fikushon/bangumi) is not a valid `Watch` return** — those only appear as members of `ExtensionAllMirror` or as the return of `Mirror`.
+:::
+
+## Submitting Extensions
+
+Submit your extension to the `Miru Extension Repository` via a PR. The PR must contain the extension source file and **does not need** the `index.json` file.

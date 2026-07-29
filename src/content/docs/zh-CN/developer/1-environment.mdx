@@ -1,0 +1,51 @@
+---
+title: 环境搭建
+description: Miru Alpha 扩展开发环境（JavaScript / Go）
+---
+
+Miru Alpha 的扩展支持 **JavaScript（goja）** 与 **Go（Scriggo）** 两种语言，下面是各自推荐的开发环境。
+
+## JavaScript 扩展
+
+### 客户端
+
+开发 JS 扩展只需安装 Miru 的 [客户端](/download/)（Windows / Android / Linux）。客户端内置 goja 引擎，可直接加载 `.js` 扩展并实时热重载；Android 端也能开发，只是看不到扩展输出的日志，调试不如桌面端方便。
+
+### 编辑器
+
+推荐使用 [VSCode](https://code.visualstudio.com/) 编辑代码，配合 JavaScript 语法高亮与 ESLint 即可。
+
+### 调试
+
+在客户端「扩展」页面导入 `.js` 文件后，修改文件会被自动监听并重新编译，无需重启客户端。
+
+## Go 扩展
+
+Go 扩展通过 [Scriggo](https://github.com/open2b/scriggo) 引擎编译运行，开发需要本地的 Go 工具链。
+
+### 工具链
+
+- 安装 [Go](https://go.dev/dl/)（建议 1.22+）。
+- 推荐使用 [VSCode](https://code.visualstudio.com/) 或 [GoLand](https://www.jetbrains.com/go/) 编辑，并安装 Go 官方插件获得语法提示。
+- 引入官方 SDK：
+
+```bash
+go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
+```
+
+### 本地验证
+
+可以把扩展放到 `miru-core` 的 Go 扩展目录下，用仓库自带的测试驱动入口函数（`Search` / `Latest` / `Detail` / `Watch` / `Mirror`）来确认接线是否正确：
+
+```bash
+go test ./pkg/extension/golang/extensions/example/...
+```
+
+### 后端与前端
+
+完整的 Miru Alpha 由两部分组成：
+
+- 后端 **miru-core**（Go）：负责运行扩展、网络请求与代理，本地可用 `make run` / `go run ./cmd` 启动。
+- 前端 **Flutter App**：负责界面与播放，仓库位于 [miru-alpha](https://github.com/miru-project/miru-alpha)。
+
+建议同时克隆后端与前端仓库以便联调。

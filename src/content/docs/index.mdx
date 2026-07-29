@@ -1,17 +1,17 @@
 ---
-title: Miru
-description: 开始使用
+title: Miru Alpha
+description: 開始使用 Miru Alpha
 template: splash
 hero:
-  tagline: 免费、开源的  支持视频、漫画、小说扩展源的多功能媒体娱乐应用，支持 Android、Windows、Web.
+  tagline: 免費、開源的  支持視頻、漫畫、小說插件源的多功能媒體娛樂應用，支持 Android、Windows、Linux.
   image:
     file: ../../assets/images/kanban.png
   actions:
-    - text: 开始使用
+    - text: 開始使用
       link: /download/
       icon: right-arrow
       variant: primary
-    - text: 扩展文档
+    - text: 插件文檔
       link: /developer/
       icon: external
 ---
@@ -19,23 +19,23 @@ hero:
 import ColorCard from "@components/ColorCard.astro";
 import myImage from "@assets/images/screenshot.png";
 
-<ColorCard title="New Miru" image={myImage} description="使用 Flutter 开发，扩展使用 QuickJS 引擎驱动，目前正在逐步实现功能">
+<ColorCard title="Miru Alpha" image={myImage} description="基於 Flutter 前端與 Go 後端（miru-core）的 Miru Alpha，插件由 goja（JavaScript）與 Scriggo（Go）引擎驅動，功能正在逐步完善">
 
-🎉 利用 Miru 的扩展系统，可以轻松的添加新的源
+🎉 利用 Miru 的插件系統，可以輕鬆的添加新的源
 
-🦋 使用对应系统 UI 设计语言，让你的体验更加统一，不割裂
+🦋 使用對應系統 UI 設計語言，讓你的體驗更加統一，不割裂
 
-📱 支持多平台，包括 Android、Windows、Web。
+📱 支持多平臺，包括 Android、Windows、Linux。
 
-🌐 支持自定义扩展仓库与代理。
+🌐 支持自定義插件倉庫與代理。
 
-📦 官方扩展仓库提供视频源，无需编写任何扩展即可使用。
+📦 官方插件倉庫提供視頻源，無需編寫任何插件即可使用。
 
-📜 使用 TMDB 获取影视信息，支持多语言。
+📜 使用 TMDB 獲取影視信息，支持多語言。
 
-📚 支持在线观看多种视频、漫画、小说源，实现多平台的统一。
+📚 支持在線觀看多種視頻、漫畫、小說源，實現多平臺的統一。
 
-📖 支持保存观看进度，不在担心看到一半的视频、漫画、小说找不到进度。
+📖 支持保存觀看進度，不在擔心看到一半的視頻、漫畫、小說找不到進度。
 
 </ColorCard>
 
@@ -43,6 +43,6 @@ import AboutMiru from "../../components/AboutMiru.astro";
 
 <AboutMiru title="Brought to you by">
   
-AGPLv3 © 2023 Miru Project.
+AGPLv3 © 2023 Miru Project. 項目地址：<a href="https://github.com/miru-project/miru-alpha">github.com/miru-project/miru-alpha</a>
 
 </AboutMiru>

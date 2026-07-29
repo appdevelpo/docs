@@ -1,14 +1,33 @@
 ---
 title: Introduction
-description: Getting Started with Miru
+description: Miru Alpha extension development guide (JavaScript / Go)
 ---
 
-Welcome to the Miru extension development! This documentation will help you quickly understand the methods and considerations for developing extensions for Miru, enabling you to easily add new extension sources to Miru.
+Welcome to Miru Alpha extension development! This documentation will help you quickly understand the methods and considerations for developing extensions for Miru Alpha, enabling you to easily add new extension sources to Miru Alpha.
 
-This documentation is intended for contributors who want to participate in Miru extension development. You should have a basic understanding of JavaScript and familiarity with Miru. The documentation is divided based on the development process, and each section contains the following:
+Miru Alpha extensions run on **two language runtimes**: **JavaScript (goja)** and **Go (Scriggo)**. Pick whichever fits: JavaScript is quick to write and has a low barrier to entry; Go suits complex parsing and reusing the Go ecosystem. Both kinds of extensions share the same metadata and data-return structures, and the frontend treats them identically.
 
-- Development Environment: Explains how to set up the Miru extension development environment, including cloning the source code and running the service.
-- Development Methods: Describes how to use Miru's interfaces to implement extension development, including adding new extension sources.
+This documentation is intended for contributors who want to participate in Miru extension development. You should have a basic understanding of JavaScript or Go and familiarity with Miru. The documentation is divided based on the development process, and each section contains the following:
+
+- Development Environment: Explains how to set up the Miru extension development environment, including cloning the source code, running the service, and the recommended JS / Go toolchains.
+- Development Methods: Describes how to use Miru's interfaces to implement extension development (both the JavaScript and Go styles), including adding new extension sources.
 - Development Examples: Provides code examples and comments for extension development to help you understand it more intuitively.
 - Development Considerations: Offers some considerations and recommendations for extension development to help you avoid common errors and issues.
-- This documentation uses formal language and includes visual aids to facilitate your understanding of Miru's extension development methods quickly, accurately, and clearly. The documentation follows a linear sequence, so you should read each section in order.
+
+This documentation uses formal language and includes visual aids to facilitate your understanding of Miru's extension development methods quickly, accurately, and clearly. The documentation follows a linear sequence, so you should read each section in order.
+
+## Reading Order
+
+1. **Development Environment**: set up the local dev environment and run the service.
+2. **Getting Started**: fill in the extension metadata and choose your language (JavaScript or Go).
+3. **Language guide**: go to the page for your language —
+   - **JavaScript Extensions**: [Get Started (V2)](/en/developer/js/1-get-started/) (recommended) / [Legacy V1](/en/developer/js/2-legacy-v1/) (compatibility) / [Data Formats (V2 / V1 legacy)](/en/developer/5-data/).
+   - **Go Extensions**: [Get Started](/en/developer/go/1-get-started/) → [Detail Usage](/en/developer/go/2-detail-usage/) → [Running with Native Go](/en/developer/go/3-running-native/) / [Running with Scriggo](/en/developer/go/4-running-scriggo/) → [Data Formats](/en/developer/5-data/).
+
+   These pages cover that language's entry points, request/cache API, built-in modules (`require` / `sdk`), and runnable examples — the pages you'll refer to most while writing your extension.
+4. **Data Formats** ([Data Formats (V2 / V1 legacy)](/en/developer/5-data/)): a reference for the input parameters and return structures of every entry point; V2 is current, V1 legacy is kept only for compatibility, and their per-type playback shapes are identical.
+
+:::tip
+Not sure which language to pick? Choose **JavaScript (goja)** for a quick, low-barrier start; choose **Go (Scriggo)** when you need complex parsing or the Go ecosystem. Both languages share identical metadata and return structures.
+:::
+

@@ -1,0 +1,157 @@
+---
+title: 快速开始（V2）
+description: 使用 goja 引擎以 V2 API 开发 Miru Alpha 的 JavaScript 扩展
+---
+
+Miru Alpha 的 JavaScript 扩展由纯 Go 实现的 [goja](https://github.com/dop251/goja) 引擎运行，扩展文件后缀为 `.js`。本页介绍 **V2（推荐）** 的完整 JS 扩展写法；通用元数据与数据返回格式见 [开始开发](/developer/2-extension/) 与 [数据格式](/developer/5-data/)。
+
+:::caution[旧版 V1 已不再推荐]
+仍在用 `class extends Extension` 旧写法的扩展请看 [JavaScript 扩展 V1（旧版）](/developer/js/2-legacy-v1/)。**新扩展请统一使用本页的 V2 API**：`watch()` 返回镜像列表、`mirror()` 解析最终地址，且与 Go 扩展契约一致。
+:::
+
+## 创建扩展文件
+
+在扩展加载目录中创建一个与包名同名的 `.js` 文件（例如 `my.extension.js`）。
+
+:::tip
+在客户端切换到「扩展」页面，点击右上角的导入按钮即可快速定位到扩展目录。
+:::
+
+## 入口函数
+
+```javascript
+// V2：直接在模块顶层声明这些函数，无需类
+var latest = (page) => { /* 最近更新 */ };
+var search = (kw, page, filter) => { /* 搜索（filter 为可选筛选项） */ };
+var detail = (url) => { /* 详情 */ };
+var watch = (url) => { /* 返回镜像列表 */ };
+var mirror = (url) => { /* 解析最终播放地址 */ };
+var createFilter = (filter) => { /* 返回筛选项描述（可选，默认未实现） */ };
+var checkUpdate = () => { /* 检查更新（可选） */ };
+async function load() { /* 扩展加载时执行一次 */ }
+```
+
+:::tip
+宿主按固定签名调用这些函数：`latest(page)`、`search(kw, page, filter)`、`detail(url)`、`watch(url)`、`mirror(url)`、`createFilter(filter)`。未实现的函数默认 `throw new Error("not implement ...")`，不影响其它函数；只有被实际调用时才会报错。
+:::
+
+## 请求与缓存
+
+请求通过全局 `Miru` 对象发起：
+
+```javascript
+// request：把 url 拼到扩展 @webSite 之后（相对地址），并自动尝试 JSON.parse 响应
+const json = await Miru.request("/api/list?page=1");
+// rawRequest：使用完整地址，不会自动以 @webSite 拼接
+const html = await Miru.rawRequest("https://example.com/page");
+
+// 跨调用保存状态（goja VM 每次执行后都会销毁，状态必须走缓存）。值一律以字符串存储
+Miru.saveCache("token", "abc123");
+const token = Miru.getCache("token");
+
+// Miru 上还暴露了扩展自身的元信息
+Miru.pkg; Miru.name; Miru.website;
+```
+
+`watch()` 在 V2 中**返回镜像列表（而非最终地址）**，用户选择某个镜像后，前端再调用 `mirror(url)` 解析出最终播放链接：
+
+```javascript
+var watch = (url) => {
+  const groups = {
+    "Server 1": [
+      { name: "Mirror 1", url: "https://m1.example.com/a.m3u8", headers: {} },
+      { name: "Mirror 2", url: "https://m2.example.com/a.m3u8", headers: {} },
+    ],
+  };
+  return { groups: Object.keys(groups).map((t) => ({ title: t, mirrors: groups[t] })) };
+};
+
+var mirror = (url) => ({
+  type: "hls",                 // hls | mp4 | torrent | magnet（内容类型，不是扩展类型）
+  url,
+  headers: { "User-Agent": "Mozilla/5.0" },
+  // tlsConfig: { profile: "chrome_133" },  // 仅 Go 扩展可用：后端自动代理并伪装 TLS 指纹
+});
+```
+
+:::note
+V1 的 `watch()` 直接返回最终播放地址，没有 `mirror()` 步骤；V2 的 `mirror()` 等价于 V1 的 `watch()`。若 V2 未实现 `mirror()`，宿主会把选中的镜像地址原样返回。旧版 V1 的完整写法见 [JavaScript 扩展 V1（旧版）](/developer/js/2-legacy-v1/)。
+
+`watch()` 接受的两种结构：`{ groups: [{ title, mirrors: [{ name, url, headers }] }] }`（数组形式），或 `{ groups: { "Server 1": [...] } }`（以分组名为 key 的对象形式，推荐，与示例代码一致）。
+:::
+
+## Node 模块（require）
+
+goja 运行环境内置了 nodejs 风格的 `require`，扩展可以直接加载宿主预置的模块，无需自己打包依赖：
+
+```javascript
+const { parseHTML } = require("linkedom"); // 轻量 DOM 解析
+const CryptoJS = require("crypto-js");     // CryptoJS.MD5 / AES / ...
+const md5 = require("md5");                 // blueimp JavaScript-MD5：md5("str")
+const JSEncrypt = require("jsencrypt");     // RSA 加密：new JSEncrypt()
+const zlib = require("zlib");               // 压缩/解压（见下表）
+```
+
+可用模块一览：
+
+| 模块 | 用途 / 导出 |
+| :- | :- |
+| `linkedom` | `parseHTML(html)` 返回 DOM（`document`/`querySelector` 等），用于抓取页面。 |
+| `crypto-js` | `CryptoJS`（MD5、SHA、AES、DES、Base64、Hmac 等，与浏览器端 crypto-js 用法一致）。 |
+| `md5` | blueimp 的 `md5(string)` 函数。 |
+| `jsencrypt` | `JSEncrypt` 类（`new JSEncrypt()` + `setPublicKey` + `encrypt`）。 |
+| `zlib` | 同步压缩/解压：`gzipSync` / `gunzipSync` / `deflateSync` / `inflateSync` / `brotliCompressSync` / `brotliDecompressSync` / `zstdCompressSync` / `zstdDecompressSync`，返回 `Uint8Array`；`bytesFromBase64(str)` 把 base64 解码为保留二进制的 `Uint8Array`。 |
+| `url` | nodejs `url` 模块（`new URL()`、解析等）。 |
+| `console` | 调试输出（`console.log` / `warn` / `error`），会转发到 Miru 的开发者日志。 |
+
+:::tip
+这些模块由宿主**预编译进 goja**，因此只能在 JS 扩展里 `require`，不能像在普通 Node 项目里那样安装任意 npm 包。若需要某个尚未内置的库，请向 miru-core 提 Issue 申请加入。
+:::
+
+此外运行环境中还有全局对象 `crypto`（`crypto.getRandomValues`，单次最多 65536 字节）。
+
+## 完整示例
+
+```javascript
+// ==MiruExtension==
+// @name         Demo Bangumi
+// @package      demo.bangumi
+// @author       Demo
+// @license      MIT
+// @lang         zh-cn
+// @icon         https://example.com/icon.png
+// @webSite      https://example.com/
+// @type         bangumi
+// @apiVersion   2
+// ==/MiruExtension==
+
+var latest = async (page) => {
+  const json = await Miru.request(`/api/latest?page=${page}`);
+  return json.list.map((it) => ({ title: it.title, url: it.id, cover: it.cover, update: it.update }));
+};
+
+var search = async (kw, page) => {
+  const json = await Miru.request(`/api/search?kw=${kw}&page=${page}`);
+  return json.list.map((it) => ({ title: it.title, url: it.id, cover: it.cover }));
+};
+
+var detail = async (url) => {
+  const json = await Miru.request(`/api/detail/${url}`);
+  return {
+    title: json.title,
+    cover: json.cover,
+    desc: json.desc,
+    chapters: json.episodes.map((ep) => ({ title: ep.name, urls: ep.sources.map((s) => s.url) })),
+  };
+};
+
+var watch = (url) => ({
+  groups: [{ title: "默认", mirrors: [{ name: "源", url, headers: {} }] }],
+});
+
+var mirror = (url) => ({ type: "mp4", url, headers: {} });
+```
+
+## 提交扩展
+
+请通过 PR 将扩展提交到 `Miru 扩展仓库`，PR 中需包含扩展源文件，**不需要** `index.json`。

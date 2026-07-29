@@ -1,0 +1,151 @@
+---
+title: Scriggo 運行
+description: 運行時 Miru 如何用 Scriggo 引擎編譯並執行 Go 插件（階段二）
+---
+
+本頁講**階段二 · Scriggo VM（運行期）**：宿主在運行時如何驅動你在 [原生 Go 運行](/developer/go/3-running-native/) 中寫好的插件。
+
+## 同一份源碼，運行時被 Scriggo 執行
+
+宿主讀取插件目錄下的 `my.extension.go`，用 Scriggo 引擎編譯後按函數名調用入口點（`Latest` / `Search` / `Detail` / `Watch` / `Mirror` / `Load`）。這與階段一（原生 Go）用的是**完全相同的源碼**——因為插件自己 `import` 了 SDK，宿主原樣編譯、無需改寫或注入。
+
+## 運行期的入口映射
+
+| 用戶操作 | 宿主調用 | 說明 |
+| :- | :- | :- |
+| 瀏覽「最近更新」 | `Latest(pkg, page)` | 返回 `[]sdk.ExtensionListItem` |
+| 搜索 | `Search(pkg, kw, page, filter)` | 返回 `[]sdk.ExtensionListItem` |
+| 打開詳情 | `Detail(pkg, url)` | 返回 `*sdk.ExtensionDetail` |
+| 點擊播放 | `Watch(pkg, url)` → `Mirror(pkg, url)` | `Watch` 返回鏡像列表（或 `ExtensionAllMirror`），`Mirror` 解析最終播放結構 |
+| 插件加載 | `Load()` | 可選，加載時執行一次 |
+
+## 運行期注意事項
+
+- **每次調用都會重新編譯運行一個 Scriggo VM**：函數內局部變量與包級全局變量都不會跨調用保留。需要複用的狀態（token、cookie 等）一律用 `sdk.SaveCache` / `sdk.GetCache`（值為 `string`）。
+- **只能使用後端已有的包**：插件裡 `import` 的包必須是 miru-core 後端已使用並在 `packages.go` 導出的（見 [詳細用法](/developer/go/2-detail-usage/) 的「可導入的包」）。引入未在 `packages.go` 註冊的包會編譯失敗。
+- **受 Scriggo 限制約束**：方法聲明、接口定義、部分 `for range` 寫法等不被支持，詳見 [詳細用法](/developer/go/2-detail-usage/) 的「Scriggo 的限制」。
+
+## 在 Miru 中加載插件
+
+把寫好的 `my.extension.go` 放進 Miru 的插件目錄（在客戶端「插件」頁點擊右上角導入按鈕可快速定位），重啟/刷新插件後即可在階段二（Scriggo）下運行。提交到插件倉庫的 PR 只需包含插件源文件，**不需要** `index.json`。
+
+## 在 Scriggo 中直接測試插件
+
+除了退回階段一用 `go test`，你也可以**直接用 Scriggo VM 編譯並調用插件**來驗證階段二行為——這正是 miru-core 運行時的做法，能最貼近真實地復現「編譯失敗 / 運行期報錯」。
+
+### 方式一：底層 API（與 TestDualStage 一致）
+
+miru-core 提供 `NewScriggoVM` / `Compile` / `Program.Call`，直接讀源文件、編譯、按名調用：
+
+```go
+// scriggo_test.go —— 放在一個能 import miru-core 的測試工程裡
+package myextension_test
+
+import (
+    "fmt"
+    "os"
+    "testing"
+
+    golang "github.com/miru-project/miru-core/pkg/extension/golang"
+)
+
+func TestUnderScriggo(t *testing.T) {
+    src, err := os.ReadFile("my.extension.go") // 讀取插件源文件
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    vm := golang.NewScriggoVM(nil)              // 創建 Scriggo VM
+    prog, err := vm.Compile("my.extension_Search", string(src))
+    if err != nil {
+        t.Fatalf("compile failed (這正是運行期 'compile extension' 錯誤): %v", err)
+    }
+
+    // 按名調用入口，參數順序與宿主一致：先 pkg，再業務參數
+    res, err := prog.Program.Call("Search", "my.extension", "naruto", 1, "")
+    if err != nil {
+        t.Fatalf("runtime error: %v", err)
+    }
+
+    // Call 返回 []any；第一個元素即你的返回值（這裡是 []sdk.ExtensionListItem）
+    items, _ := res[0].([]interface{})
+    fmt.Printf("got %d items: %+v\n", len(items), items)
+}
+```
+
+要點：
+- `vm.Compile(name, src)` 的 `name` 任意取；`src` 是 `.go` 文件**完整文本**。
+- `prog.Program.Call("Search", args...)` 返回 `([]any, error)`——與宿主 `callExtension` 走的是同一條 Scriggo 編譯/調用路徑，所以**編譯錯誤會原樣暴露**（信息以 `compile extension` 開頭）。
+- 返回值是 `[]any`，按入口函數的返回位置取：`res[0]` 是第一個返回值（如 `[]sdk.ExtensionListItem`），`res[1]` 是 `error`。
+
+### 方式二：高層 Runtime（完全鏡像宿主加載流程）
+
+如果想連「解析元數據 + 跑 Load + 按名調用」都和宿主一致，用 `NewRuntime`：
+
+```go
+func TestUnderScriggoRuntime(t *testing.T) {
+    golang.ExtensionDir = "."              // 插件目錄（含 my.extension.go）
+    rt := golang.NewRuntime(golang.NewScriggoVM(nil))
+
+    ext, err := golang.ParseExtensionMetadata("my.extension")
+    if err != nil {
+        t.Fatal(err)
+    }
+    if err := rt.LoadExtension(ext); err != nil { // 解析元數據 + 編譯 + 跑 Load
+        t.Fatalf("load failed: %v", err)
+    }
+
+    res, err := rt.Call("Search", "my.extension", "naruto", 1, "") // 按名調用
+    if err != nil {
+        t.Fatalf("call failed: %v", err)
+    }
+    _ = res
+}
+```
+
+這種方式最貼近 Miru 實際運行：先 `LoadExtension`（會執行 `Load` 入口、提前暴露編譯錯誤），再 `rt.Call` 驅動各入口。
+
+:::tip
+**何時用哪種？** 只想快速復現「Scriggo 能不能編譯 / 運行期報什麼錯」，用方式一最直接；想驗證「和 Miru 裡一模一樣的加載與調用流程」，用方式二。兩者都比退回原生 Go 更貼近階段二的真實表現。
+:::
+
+## 調試（Scriggo 運行期）
+
+階段二沒有斷點調試器，錯誤信息來自宿主對 Scriggo 的編譯/運行封裝。理解錯誤格式能快速定位問題。
+
+### 錯誤從哪來
+
+宿主（`endpoint.go` 的 `callExtension`）把插件源文件**原樣**交給 Scriggo 編譯並按名調用。錯誤分兩類：
+
+- **編譯錯誤**：源文件無法被 Scriggo 編譯，錯誤信息以 `compile extension <包名>: ...` 開頭。原因通常是：
+  - 使用了 Scriggo 不支持的語法（方法聲明、接口定義、帶標籤的 `continue/break`、特定 `for range` 寫法等，見 [詳細用法](/developer/go/2-detail-usage/) 的「Scriggo 的限制」）。
+  - `import` 了未在 `packages.go` 註冊的包（見「可導入的包」）。
+  - 觸發了性能硬上限（單函數寄存器/類型/常量數量超限）。
+- **運行期錯誤**：編譯通過但執行中出錯，宿主會用 `withStackTrace` 包裹並返回**調用棧**。先看棧頂的入口函數與行號，再往下看是哪一行 panic / 返回了錯誤。
+
+### 在 Miru 客戶端看錯誤
+
+插件運行出錯時，Miru 客戶端會在對應操作（詳情/播放等）處提示錯誤。把錯誤原文（尤其是 `compile extension ...` 或帶行號的棧）完整複製下來，按上面兩類排查。
+
+### 用「退回階段一」隔離邏輯錯誤
+
+Scriggo 運行期看不到 `fmt` 輸出，且錯誤信息不如原生 Go 詳細。定位邏輯問題時，**先把同一份源文件拿回階段一**：
+
+```bash
+cd my.extension
+go test -run TestSearch -v   # 用 go test 復現：是返回結構不對，還是網絡/解析出錯？
+```
+
+- 如果階段一 `go test` 也失敗：是**你的邏輯問題**（解析、字段名、類型），用 Delve/`fmt` 在原生 Go 下修。
+- 如果階段一通過、階段二報錯：幾乎一定是 **Scriggo 限制或未導出的包**問題（語法不支持 / 引入了未在 `packages.go` 註冊的包 / 寄存器或類型上限），對照 [詳細用法](/developer/go/2-detail-usage/) 逐條排查。
+
+### 常見運行期坑
+
+- **跨調用狀態丟失**：以為全局變量/上一次調用的局部變量還在，其實每次調用都是全新的 Scriggo VM。需要複用的數據用 `sdk.SaveCache` / `sdk.GetCache`。
+- **`reflect` / `fmt %T` 看不出自定義類型**：Scriggo 定義的類型在 `reflect` 下顯示的是底層包裝名，不要依賴它做類型判斷。
+- **`nil` 與零值**：返回指針（如 `*sdk.ExtensionDetail`）時務必保證非 `nil`，否則宿主反序列化會出錯。
+- **超大單函數**：把巨量常量/類型/閉包拆到多個入口函數，避免觸發性能硬上限。
+
+:::tip
+由於階段一與階段二共用源碼、返回結構一致，你在 [原生 Go 運行](/developer/go/3-running-native/) 用 `go test` 驗證通過的插件，放進 Miru 後幾乎不會出現運行期差異。若運行期報錯，優先檢查是否使用了 Scriggo 不支持的語法或引入了未在 `packages.go` 註冊的包。
+:::

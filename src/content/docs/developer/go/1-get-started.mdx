@@ -1,0 +1,40 @@
+---
+title: 快速開始
+description: 使用 Scriggo 引擎開發 Miru Alpha 的 Go 插件（元數據與入口函數）
+---
+
+Go 插件就是一份普通的 Go 源文件（`.go`），宿主使用 [Scriggo](https://github.com/open2b/scriggo) 引擎編譯運行。它適合需要更強類型、複雜解析或使用 Go 生態庫的場景。
+
+本頁介紹如何**創建插件文件與聲明入口函數**；`sdk` 的詳細用法、返回類型與 Scriggo 限制請見 [詳細用法](/developer/go/2-detail-usage/)；本地以原生 Go 開發與運行時交給 Scriggo 執行兩種驅動方式見 [原生 Go 運行](/developer/go/3-running-native/) 與 [Scriggo 運行](/developer/go/4-running-scriggo/)。通用元數據見 [開始開發](/developer/2-extension/)，返回結構見 [數據格式](/developer/5-data/)。
+
+## 創建插件文件
+
+新建一個與包名同名的 `.go` 文件，例如 `my.extension.go`。文件是一個普通的 Go package，通過 `go get` 引入官方 SDK：
+
+```bash
+go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
+```
+
+## 入口函數
+
+Go 插件通過**導出函數**暴露入口，宿主按函數名調用：
+
+```go
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+
+// 參數順序：pkg string 在前，其餘為業務參數
+func Latest(pkg string, page int) ([]sdk.ExtensionListItem, error) { /* ... */ }
+func Search(pkg string, kw string, page int, filter string) ([]sdk.ExtensionListItem, error) { /* ... */ }
+func Detail(pkg, url string) (*sdk.ExtensionDetail, error) { /* ... */ }
+func Watch(pkg, url string) (*sdk.ExtensionWatch, error) { /* 返回鏡像列表（或 @type all 的 ExtensionAllMirror） */ }
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) { /* 解析最終播放結構 */ }
+func Load() { /* 插件加載時執行一次（可省略） */ }
+```
+
+:::tip
+宿主調用 `Watch` 時只接受兩種返回形狀：通用 V2 的 `ExtensionWatch`（分組鏡像列表，再由 `Mirror` 解析），或組合型 `ExtensionAllMirror`（僅 `@type all` 使用，內部包含 manga/fikushon/bangumi 成員）。**獨立的單類型 watch 形狀（manga/fikushon/bangumi）不能作為 `Watch` 的返回值**——它們只作為 `ExtensionAllMirror` 的成員出現，或由 `Mirror` 返回。
+:::
+
+## 提交插件
+
+請通過 PR 將插件提交到 `Miru 插件倉庫`，PR 中需包含插件源文件，**不需要** `index.json`。

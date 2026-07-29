@@ -1,0 +1,48 @@
+---
+title: Miru Alpha
+description: 开始使用 Miru Alpha
+template: splash
+hero:
+  tagline: 免费、开源的  支持视频、漫画、小说扩展源的多功能媒体娱乐应用，支持 Android、Windows、Linux.
+  image:
+    file: ../../../assets/images/kanban.png
+  actions:
+    - text: 开始使用
+      link: /download/
+      icon: right-arrow
+      variant: primary
+    - text: 扩展文档
+      link: /developer/
+      icon: external
+---
+
+import ColorCard from "@components/ColorCard.astro";
+import myImage from "@assets/images/screenshot.png";
+
+<ColorCard title="Miru Alpha" image={myImage} description="基于 Flutter 前端与 Go 后端（miru-core）的 Miru Alpha，扩展由 goja（JavaScript）与 Scriggo（Go）引擎驱动，功能正在逐步完善">
+
+🎉 利用 Miru 的扩展系统，可以轻松的添加新的源
+
+🦋 使用对应系统 UI 设计语言，让你的体验更加统一，不割裂
+
+📱 支持多平台，包括 Android、Windows、Linux。
+
+🌐 支持自定义扩展仓库与代理。
+
+📦 官方扩展仓库提供视频源，无需编写任何扩展即可使用。
+
+📜 使用 TMDB 获取影视信息，支持多语言。
+
+📚 支持在线观看多种视频、漫画、小说源，实现多平台的统一。
+
+📖 支持保存观看进度，不在担心看到一半的视频、漫画、小说找不到进度。
+
+</ColorCard>
+
+import AboutMiru from "../../../components/AboutMiru.astro";
+
+<AboutMiru title="Brought to you by">
+  
+AGPLv3 © 2023 Miru Project. 项目地址：<a href="https://github.com/miru-project/miru-alpha">github.com/miru-project/miru-alpha</a>
+
+</AboutMiru>

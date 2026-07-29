@@ -1,104 +1,53 @@
 ---
 title: Getting Started
-description: Getting Started with Miru
+description: Miru Alpha extension development guide (JavaScript / Go)
 ---
 
-To develop extensions, you need to have a good understanding of JavaScript and regular expressions. If you are not familiar with regular expressions, you can start by learning "[Regular Expressions and String Methods](https://zh.javascript.info/regexp-methods)" and "[Regular Expressions in 30 Minutes](https://deerchao.net/tutorials/regex/regex.htm)".
+Miru Alpha's extension system supports **both JavaScript and Go** as runtime languages:
 
-This documentation assumes that you have already set up the development environment as described in the [Environment Setup](/en/developer/1-environment/) section.
+- **JavaScript runtime**: powered by [goja](https://github.com/dop251/goja) (a pure-Go ECMAScript engine); extension files use the `.js` suffix.
+- **Go runtime**: powered by [Scriggo](https://github.com/open2b/scriggo) (a Go templating/scripting engine); extension files use the `.go` suffix.
 
-## Quick Start
+Both kinds of extensions share the same metadata format and data-return structures; they differ mainly in **syntax** and the **engine** that runs them. Below we cover the shared metadata first, then give complete JavaScript and Go examples.
 
-### Create Extension File
+To develop extensions you need a working knowledge of JavaScript or Go, plus regular expressions. If you are new to regular expressions, start with "[Regular Expressions and String Methods](https://zh.javascript.info/regexp-methods)" and "[Regular Expressions in 30 Minutes](https://deerchao.net/tutorials/regex/regex.htm)".
 
-Please create a JavaScript file with the same name as your package name in the extension loading directory on Windows.
+This documentation assumes you have already set up the development environment as described in the [Environment Setup](/en/developer/1-environment/) section.
 
-:::tip
-You can navigate to the extension page by clicking on the extension loading directory:
-![Extension Loading Directory](./images/1689866233139.png)
-Then click the import button in the upper right corne:
-![Extension Loading Directory](./images/1689866249425.png)
-This will quickly locate the extension directory.
-:::
+## Extension Metadata
 
-### Write Metadata
-
-The metadata contains basic information about the extension, such as the package name, version, author, description, etc. Write the metadata in the extension file, and it must be enclosed between `// ==MiruExtension==` comments.
-
-Metadata example:
+For both JS and Go extensions, the file must start with a metadata block wrapped in `// ==MiruExtension==` … `// ==/MiruExtension==` comments.
 
 ```text
-
 // ==MiruExtension==
-// @name  Extension Name
-// @version v0.0.1
-// @author Xxxx
-// @lang zh-cn
-// @icon https://xxx.xxx.xxx/xxx.png
-// @package xxx.xxx.xxx
-// @type bangumi
-// @webSite https://xxx.xxx.xxx/
+// @name         My Extension
+// @version      v0.0.1
+// @author       YourName
+// @license      MIT
+// @lang         zh-cn
+// @icon         https://example.com/icon.png
+// @package      my.extension
+// @type         bangumi
+// @webSite      https://example.com/
+// @apiVersion   2
 // ==/MiruExtension==
-
 ```
 
 :::tip
-The `@name`, `@version`, `@webSite`, `@package`, `@type` are required fields, while others are optional.
-The `@webSite` is the target address of the extension, and the `@package`  must match the extension file name.
-
-The `@type` is a required field used to indicate the type of the extension.
-| @type | | |
-| :-: | :-: | :-: |
-| | bangumi | Animation |
-| | manga| Manga |
-| | fikushon | Novel |
+Required fields: `@name`, `@version`, `@package`, `@webSite`, `@type`, `@apiVersion`.
+- `@package` **must** match the extension file name (without the `.js` / `.go` suffix).
+- `@type` sets the content type: `bangumi` (animation), `manga` (comics), `fikushon` (novel), or `all` (all three).
+- `@apiVersion`: set JS extensions to `2` to use the new API (recommended); Go extensions default to V2 and may omit it.
+- `@license`, `@lang`, `@icon`, `@description`, `@tags` are optional.
 :::
 
-### Extends Extension Class
+## Choose a Runtime
 
-In the extension file, export a class that extends the `Extension` class. For example:
+Once the metadata is in place, pick the guide for your language. Each contains the full entry points, request/cache APIs, and a runnable example:
 
-```javascript
-export default class extends Extension {}
-```
+- **JavaScript**: [JavaScript Extensions V2 (goja)](/en/developer/js/1-get-started/) (recommended); for the old style see [JavaScript Extensions V1 (legacy)](/en/developer/js/2-legacy-v1/).
+- **Go**: [Go Extensions (Scriggo)](/en/developer/go/1-get-started/)
 
-### Override Methods in the Extension
+The return structures (list items, detail, and per-type playback shapes) are defined in [Data Formats](/en/developer/5-data/).
 
-In the extension class, override the methods from the `Extension` class. For example:
 
-```javascript
-export default class extends Extension {
-  async latest() {
-    // Latest updates
-  }
-  async search() {
-    // Search
-  }
-  async detail() {
-    // Details
-  }
-  async watch() {
-    // Watch
-  }
-}
-```
-
-The returned data should follow the [data format](/en/developer/3-data/).
-You can use the `this.request` method to make requests, for example:
-
-```javascript
-const res = await this.request({
-  url: "/xxx",
-  method: "GET",
-});
-```
-
-`this.request`  is a proxy request. If you don't use `this.request`, you may encounter cross-origin errors (Web only).
-
-### Submit to the `Miru Extension Repository`
-
-Please submit your extension to the `Miru Extension Repository` using `PR`. The submitted `PR` needs to contain your extension file and **does not need** the `index.json` file.
-
-## Example
-
-You can visit the [Miru Official Repository](https://miru-repo.0n0.dev) for examples.
