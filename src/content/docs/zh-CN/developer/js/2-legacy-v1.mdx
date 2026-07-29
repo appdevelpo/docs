@@ -4,7 +4,7 @@ description: 使用 class extends Extension 旧写法开发 Miru Alpha 的 JavaS
 ---
 
 :::caution[旧版 API，不再推荐]
-新扩展请使用 [JavaScript 扩展 V2（goja）](/developer/js/1-get-started/)。本页仅保留给仍然使用 `class extends Extension` 写法的存量扩展参考。V1 与 V2 的核心区别是 `watch()`：V1 的 `watch()` **直接返回最终播放地址**（没有 `mirror()` 步骤），而 V2 的 `watch()` 返回镜像列表、再由 `mirror()` 解析。
+新扩展请使用 [JavaScript 扩展 V2（goja）](/docs/developer/js/1-get-started/)。本页仅保留给仍然使用 `class extends Extension` 写法的存量扩展参考。V1 与 V2 的核心区别是 `watch()`：V1 的 `watch()` **直接返回最终播放地址**（没有 `mirror()` 步骤），而 V2 的 `watch()` 返回镜像列表、再由 `mirror()` 解析。
 :::
 
 V1 扩展是一个继承自宿主注入的 `Extension` 类的对象。宿主在加载时会把 `class X extends Extension` 改写为 `globalThis.Ext = class extends Extension {...}`，并实例化它。所有请求方法都挂在 `this` 上。
@@ -116,7 +116,7 @@ class Demo extends Extension {
 ```
 
 :::note
-V1 的 `watch()` 返回结构与 V2 `mirror()` 的返回结构完全一致（见 [数据格式](/developer/5-data/)）。区别只在调用方式：V1 一次性返回，V2 先 `watch` 列镜像、再 `mirror` 解析。
+V1 的 `watch()` 返回结构与 V2 `mirror()` 的返回结构完全一致（见 [数据格式](/docs/developer/5-data/)）。区别只在调用方式：V1 一次性返回，V2 先 `watch` 列镜像、再 `mirror` 解析。
 :::
 
 ## 提交扩展

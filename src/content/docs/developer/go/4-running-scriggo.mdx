@@ -3,7 +3,7 @@ title: Scriggo 運行
 description: 運行時 Miru 如何用 Scriggo 引擎編譯並執行 Go 插件（階段二）
 ---
 
-本頁講**階段二 · Scriggo VM（運行期）**：宿主在運行時如何驅動你在 [原生 Go 運行](/developer/go/3-running-native/) 中寫好的插件。
+本頁講**階段二 · Scriggo VM（運行期）**：宿主在運行時如何驅動你在 [原生 Go 運行](/docs/developer/go/3-running-native/) 中寫好的插件。
 
 ## 同一份源碼，運行時被 Scriggo 執行
 
@@ -22,8 +22,8 @@ description: 運行時 Miru 如何用 Scriggo 引擎編譯並執行 Go 插件（
 ## 運行期注意事項
 
 - **每次調用都會重新編譯運行一個 Scriggo VM**：函數內局部變量與包級全局變量都不會跨調用保留。需要複用的狀態（token、cookie 等）一律用 `sdk.SaveCache` / `sdk.GetCache`（值為 `string`）。
-- **只能使用後端已有的包**：插件裡 `import` 的包必須是 miru-core 後端已使用並在 `packages.go` 導出的（見 [詳細用法](/developer/go/2-detail-usage/) 的「可導入的包」）。引入未在 `packages.go` 註冊的包會編譯失敗。
-- **受 Scriggo 限制約束**：方法聲明、接口定義、部分 `for range` 寫法等不被支持，詳見 [詳細用法](/developer/go/2-detail-usage/) 的「Scriggo 的限制」。
+- **只能使用後端已有的包**：插件裡 `import` 的包必須是 miru-core 後端已使用並在 `packages.go` 導出的（見 [詳細用法](/docs/developer/go/2-detail-usage/) 的「可導入的包」）。引入未在 `packages.go` 註冊的包會編譯失敗。
+- **受 Scriggo 限制約束**：方法聲明、接口定義、部分 `for range` 寫法等不被支持，詳見 [詳細用法](/docs/developer/go/2-detail-usage/) 的「Scriggo 的限制」。
 
 ## 在 Miru 中加載插件
 
@@ -118,7 +118,7 @@ func TestUnderScriggoRuntime(t *testing.T) {
 宿主（`endpoint.go` 的 `callExtension`）把插件源文件**原樣**交給 Scriggo 編譯並按名調用。錯誤分兩類：
 
 - **編譯錯誤**：源文件無法被 Scriggo 編譯，錯誤信息以 `compile extension <包名>: ...` 開頭。原因通常是：
-  - 使用了 Scriggo 不支持的語法（方法聲明、接口定義、帶標籤的 `continue/break`、特定 `for range` 寫法等，見 [詳細用法](/developer/go/2-detail-usage/) 的「Scriggo 的限制」）。
+  - 使用了 Scriggo 不支持的語法（方法聲明、接口定義、帶標籤的 `continue/break`、特定 `for range` 寫法等，見 [詳細用法](/docs/developer/go/2-detail-usage/) 的「Scriggo 的限制」）。
   - `import` 了未在 `packages.go` 註冊的包（見「可導入的包」）。
   - 觸發了性能硬上限（單函數寄存器/類型/常量數量超限）。
 - **運行期錯誤**：編譯通過但執行中出錯，宿主會用 `withStackTrace` 包裹並返回**調用棧**。先看棧頂的入口函數與行號，再往下看是哪一行 panic / 返回了錯誤。
@@ -137,7 +137,7 @@ go test -run TestSearch -v   # 用 go test 復現：是返回結構不對，還�
 ```
 
 - 如果階段一 `go test` 也失敗：是**你的邏輯問題**（解析、字段名、類型），用 Delve/`fmt` 在原生 Go 下修。
-- 如果階段一通過、階段二報錯：幾乎一定是 **Scriggo 限制或未導出的包**問題（語法不支持 / 引入了未在 `packages.go` 註冊的包 / 寄存器或類型上限），對照 [詳細用法](/developer/go/2-detail-usage/) 逐條排查。
+- 如果階段一通過、階段二報錯：幾乎一定是 **Scriggo 限制或未導出的包**問題（語法不支持 / 引入了未在 `packages.go` 註冊的包 / 寄存器或類型上限），對照 [詳細用法](/docs/developer/go/2-detail-usage/) 逐條排查。
 
 ### 常見運行期坑
 
@@ -147,5 +147,5 @@ go test -run TestSearch -v   # 用 go test 復現：是返回結構不對，還�
 - **超大單函數**：把巨量常量/類型/閉包拆到多個入口函數，避免觸發性能硬上限。
 
 :::tip
-由於階段一與階段二共用源碼、返回結構一致，你在 [原生 Go 運行](/developer/go/3-running-native/) 用 `go test` 驗證通過的插件，放進 Miru 後幾乎不會出現運行期差異。若運行期報錯，優先檢查是否使用了 Scriggo 不支持的語法或引入了未在 `packages.go` 註冊的包。
+由於階段一與階段二共用源碼、返回結構一致，你在 [原生 Go 運行](/docs/developer/go/3-running-native/) 用 `go test` 驗證通過的插件，放進 Miru 後幾乎不會出現運行期差異。若運行期報錯，優先檢查是否使用了 Scriggo 不支持的語法或引入了未在 `packages.go` 註冊的包。
 :::

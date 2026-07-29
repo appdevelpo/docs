@@ -5,7 +5,7 @@ description: 以原生 Go 包的方式本地开发与测试 Go 扩展（阶段�
 
 Miru 的 Go 扩展同一份源码可以**两种阶段**驱动。本页讲**阶段一 · 原生 Go（开发期）**：把扩展当成一个普通的 Go package 来写，从而获得完整的 IDE 支持与单测能力。
 
-> 关键点：**阶段一与阶段二（Scriggo 运行）使用同一份源文件**。你在本地用原生 Go 调通的逻辑，运行时会被 Scriggo 原样编译执行，不会出现「本地能跑、装上跑不了」的偏差。运行时如何驱动见 [Scriggo 运行](/developer/go/4-running-scriggo/)。
+> 关键点：**阶段一与阶段二（Scriggo 运行）使用同一份源文件**。你在本地用原生 Go 调通的逻辑，运行时会被 Scriggo 原样编译执行，不会出现「本地能跑、装上跑不了」的偏差。运行时如何驱动见 [Scriggo 运行](/docs/developer/go/4-running-scriggo/)。
 
 ## 初始化项目
 
@@ -17,7 +17,7 @@ go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
 
 ## 像普通 Go 包一样编写与调试
 
-`my.extension.go`（与 [详细用法](/developer/go/2-detail-usage/) 中的结构一致，直接 `import sdk`）：
+`my.extension.go`（与 [详细用法](/docs/developer/go/2-detail-usage/) 中的结构一致，直接 `import sdk`）：
 
 ```go
 package myextension
@@ -116,7 +116,7 @@ dlv debug                          # 若有 main 可调试
 - 提交前跑 `go vet ./...` 和 `go build ./...` 做静态检查，避免把 Scriggo 不支持的低级错误（如未使用的变量）带进运行期。
 
 :::tip
-推荐流程：**先在阶段一用原生 Go + `go test` 把每个入口函数的返回结构调对**，再把源文件放进 Miru 扩展目录交给阶段二（Scriggo）运行。两个阶段的返回结构完全一致（见 [数据格式](/developer/5-data/)），所以本地测试通过即代表运行期正确。
+推荐流程：**先在阶段一用原生 Go + `go test` 把每个入口函数的返回结构调对**，再把源文件放进 Miru 扩展目录交给阶段二（Scriggo）运行。两个阶段的返回结构完全一致（见 [数据格式](/docs/developer/5-data/)），所以本地测试通过即代表运行期正确。
 :::
 
 miru-core 仓库内的 `pkg/extension/golang/extensions/example` 就是这种「一份源码、两阶段通用」的范例——它既能被原生 Go 直接 `import` 调用，也能被 Scriggo 编译运行。

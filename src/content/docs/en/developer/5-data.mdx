@@ -5,10 +5,10 @@ description: Input and return structures for Miru Alpha extensions — V2 is cur
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-This page defines the **input parameters and return structures** of each extension entry point, and corresponds one-to-one with the entry functions in [JavaScript Extensions (V2)](/en/developer/js/1-get-started/) / [Go Extensions](/en/developer/go/1-get-started/).
+This page defines the **input parameters and return structures** of each extension entry point, and corresponds one-to-one with the entry functions in [JavaScript Extensions (V2)](/docs/en/developer/js/1-get-started/) / [Go Extensions](/docs/en/developer/go/1-get-started/).
 
 - **V2 (current standard)**: `watch()` returns a list of mirrors, then `mirror(url)` resolves it into the per-type shapes below. New extensions must use V2.
-- **V1 (legacy-compatible)**: `watch()` returns the final playback shape directly, with no `mirror()` step — see [Data Formats (V1, legacy)](#data-formats-v1-legacy) at the bottom. Reference only for existing extensions; [JavaScript Extensions V1 (legacy)](/en/developer/js/2-legacy-v1/) covers its syntax.
+- **V1 (legacy-compatible)**: `watch()` returns the final playback shape directly, with no `mirror()` step — see [Data Formats (V1, legacy)](#data-formats-v1-legacy) at the bottom. Reference only for existing extensions; [JavaScript Extensions V1 (legacy)](/docs/en/developer/js/2-legacy-v1/) covers its syntax.
 
 :::tip
 The core V1 vs V2 difference is in `watch`: V1's `watch()` **returns the final playback shape directly**; V2's `watch()` returns a **list of mirrors** (`WatchList`), and once the user picks a mirror the frontend calls `mirror(url)` to resolve it into the per-type shapes below (`BangumiWatch` / `MangaWatch` / `FikushonWatch`). The **per-type playback shapes themselves are identical across both versions** — only the `watch` contract differs.
@@ -435,5 +435,5 @@ class Extension {
 ```
 
 :::caution
-V1 is no longer recommended for new extensions; new extensions should use V2 uniformly (see [JavaScript Extensions](/en/developer/js/1-get-started/) and [Go Extensions](/en/developer/go/1-get-started/)).
+V1 is no longer recommended for new extensions; new extensions should use V2 uniformly (see [JavaScript Extensions](/docs/en/developer/js/1-get-started/) and [Go Extensions](/docs/en/developer/go/1-get-started/)).
 :::

@@ -4,7 +4,7 @@ description: Develop Miru Alpha JavaScript extensions with the old class extends
 ---
 
 :::caution[Legacy API — not recommended]
-New extensions should use [JavaScript Extensions V2 (goja)](/en/developer/js/1-get-started/). This page is kept only for existing extensions that still use `class extends Extension`. The core V1 vs V2 difference is in `watch()`: V1's `watch()` **returns the final playback URL directly** (no `mirror()` step), whereas V2's `watch()` returns a list of mirrors resolved later by `mirror()`.
+New extensions should use [JavaScript Extensions V2 (goja)](/docs/en/developer/js/1-get-started/). This page is kept only for existing extensions that still use `class extends Extension`. The core V1 vs V2 difference is in `watch()`: V1's `watch()` **returns the final playback URL directly** (no `mirror()` step), whereas V2's `watch()` returns a list of mirrors resolved later by `mirror()`.
 :::
 
 A V1 extension is an object that extends the host-injected `Extension` class. At load time the host rewrites `class X extends Extension` into `globalThis.Ext = class extends Extension {...}` and instantiates it. All request helpers live on `this`.
@@ -116,7 +116,7 @@ class Demo extends Extension {
 ```
 
 :::note
-V1's `watch()` return shape is identical to V2's `mirror()` return shape (see [Data Formats](/en/developer/5-data/)). The only difference is the call flow: V1 returns it in one step, V2 lists mirrors first and resolves via `mirror()`.
+V1's `watch()` return shape is identical to V2's `mirror()` return shape (see [Data Formats](/docs/en/developer/5-data/)). The only difference is the call flow: V1 returns it in one step, V2 lists mirrors first and resolves via `mirror()`.
 :::
 
 ## Submitting Extensions

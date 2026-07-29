@@ -3,10 +3,10 @@ title: Get Started (V2)
 description: Develop Miru Alpha JavaScript extensions with the goja engine using the V2 API
 ---
 
-Miru Alpha's JavaScript extensions run on the pure-Go [goja](https://github.com/dop251/goja) engine; extension files use the `.js` suffix. This page covers the **V2 (recommended)** JS workflow; see [Getting Started](/en/developer/2-extension/) for the shared metadata and [Data Formats](/en/developer/5-data/) for the return structures.
+Miru Alpha's JavaScript extensions run on the pure-Go [goja](https://github.com/dop251/goja) engine; extension files use the `.js` suffix. This page covers the **V2 (recommended)** JS workflow; see [Getting Started](/docs/en/developer/2-extension/) for the shared metadata and [Data Formats](/docs/en/developer/5-data/) for the return structures.
 
 :::caution[Legacy V1 is no longer recommended]
-Extensions still using the old `class extends Extension` style should refer to [JavaScript Extensions V1 (legacy)](/en/developer/js/2-legacy-v1/). **New extensions should use the V2 API on this page**: `watch()` returns a list of mirrors and `mirror()` resolves the final URL, matching the Go extension contract.
+Extensions still using the old `class extends Extension` style should refer to [JavaScript Extensions V1 (legacy)](/docs/en/developer/js/2-legacy-v1/). **New extensions should use the V2 API on this page**: `watch()` returns a list of mirrors and `mirror()` resolves the final URL, matching the Go extension contract.
 :::
 
 ## Create the Extension File
@@ -75,7 +75,7 @@ var mirror = (url) => ({
 ```
 
 :::note
-V1's `watch()` returns the final playback URL directly and has no `mirror()` step; V2's `mirror()` is the equivalent of V1's `watch()`. If a V2 extension does not implement `mirror()`, the host passes the selected mirror URL straight through. The full legacy V1 style is documented on [JavaScript Extensions V1 (legacy)](/en/developer/js/2-legacy-v1/).
+V1's `watch()` returns the final playback URL directly and has no `mirror()` step; V2's `mirror()` is the equivalent of V1's `watch()`. If a V2 extension does not implement `mirror()`, the host passes the selected mirror URL straight through. The full legacy V1 style is documented on [JavaScript Extensions V1 (legacy)](/docs/en/developer/js/2-legacy-v1/).
 
 `watch()` accepts two shapes: `{ groups: [{ title, mirrors: [{ name, url, headers }] }] }` (array form), or `{ groups: { "Server 1": [...] } }` (object keyed by group title — recommended, matches the example above).
 :::

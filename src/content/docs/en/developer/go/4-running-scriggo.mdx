@@ -3,7 +3,7 @@ title: Running with Scriggo
 description: How Miru compiles and runs a Go extension with the Scriggo engine at runtime (Stage 2)
 ---
 
-This page covers **Stage 2 · Scriggo VM (runtime)**: how the host drives the extension you wrote in [Running with Native Go](/en/developer/go/3-running-native/).
+This page covers **Stage 2 · Scriggo VM (runtime)**: how the host drives the extension you wrote in [Running with Native Go](/docs/en/developer/go/3-running-native/).
 
 ## Same source, executed by Scriggo at runtime
 
@@ -22,8 +22,8 @@ The host reads `my.extension.go` from the extension directory, compiles it with 
 ## Runtime notes
 
 - **Every call recompiles and runs a fresh Scriggo VM**: local variables and package-level globals are not preserved across calls. State you must reuse (tokens, cookies, ...) goes through `sdk.SaveCache` / `sdk.GetCache` (values are `string`).
-- **Only packages the backend already uses are importable**: packages you `import` must be part of the miru-core binary and exported in `packages.go` (see "Importable Packages" in [Detail Usage](/en/developer/go/2-detail-usage/)). Importing a package that is not registered in `packages.go` fails compilation.
-- **Scriggo limitations apply**: method declarations, interface definitions, some `for range` forms, etc. are unsupported — see "Scriggo Limitations" in [Detail Usage](/en/developer/go/2-detail-usage/).
+- **Only packages the backend already uses are importable**: packages you `import` must be part of the miru-core binary and exported in `packages.go` (see "Importable Packages" in [Detail Usage](/docs/en/developer/go/2-detail-usage/)). Importing a package that is not registered in `packages.go` fails compilation.
+- **Scriggo limitations apply**: method declarations, interface definitions, some `for range` forms, etc. are unsupported — see "Scriggo Limitations" in [Detail Usage](/docs/en/developer/go/2-detail-usage/).
 
 ## Loading the extension in Miru
 
@@ -118,7 +118,7 @@ Stage 2 has no breakpoint debugger; error messages come from the host's Scriggo 
 The host (`callExtension` in `endpoint.go`) hands the extension source to Scriggo **as-is** to compile and invoke by name. Errors fall into two classes:
 
 - **Compile errors**: the source can't be compiled by Scriggo; the message starts with `compile extension <pkg>: ...`. Typical causes:
-  - Scriggo-unsupported syntax (method declarations, interface definitions, labeled `continue`/`break`, certain `for range` forms — see "Scriggo Limitations" in [Detail Usage](/en/developer/go/2-detail-usage/)).
+  - Scriggo-unsupported syntax (method declarations, interface definitions, labeled `continue`/`break`, certain `for range` forms — see "Scriggo Limitations" in [Detail Usage](/docs/en/developer/go/2-detail-usage/)).
   - Importing a package not registered in `packages.go` (see "Importable Packages").
   - Hitting a performance hard cap (per-function registers / types / constants exceeded).
 - **Runtime errors**: compilation succeeded but execution failed; the host wraps it with `withStackTrace` and returns a **stack trace**. Read the top of the stack (entry function + line) first, then go down to see which line panicked / returned an error.
@@ -137,7 +137,7 @@ go test -run TestSearch -v   # reproduce with go test: wrong return shape, or ne
 ```
 
 - If Stage 1 `go test` also fails: it's **your logic** (parsing, field names, types) — fix it under native Go with Delve / `fmt`.
-- If Stage 1 passes but Stage 2 errors: it's almost certainly a **Scriggo limitation or un-exported package** issue (unsupported syntax / un-registered import / register-or-type cap) — check it against [Detail Usage](/en/developer/go/2-detail-usage/) point by point.
+- If Stage 1 passes but Stage 2 errors: it's almost certainly a **Scriggo limitation or un-exported package** issue (unsupported syntax / un-registered import / register-or-type cap) — check it against [Detail Usage](/docs/en/developer/go/2-detail-usage/) point by point.
 
 ### Common runtime pitfalls
 
@@ -147,5 +147,5 @@ go test -run TestSearch -v   # reproduce with go test: wrong return shape, or ne
 - **Oversized single function**: split huge constants / types / closures across multiple entry functions to avoid the performance hard caps.
 
 :::tip
-Because Stage 1 and Stage 2 share source and return shapes, an extension you verified with `go test` in [Running with Native Go](/en/developer/go/3-running-native/) will rarely differ at runtime. If a runtime error appears, first check for Scriggo-unsupported syntax or an import not registered in `packages.go`.
+Because Stage 1 and Stage 2 share source and return shapes, an extension you verified with `go test` in [Running with Native Go](/docs/en/developer/go/3-running-native/) will rarely differ at runtime. If a runtime error appears, first check for Scriggo-unsupported syntax or an import not registered in `packages.go`.
 :::

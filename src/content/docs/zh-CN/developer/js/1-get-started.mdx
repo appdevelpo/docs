@@ -3,10 +3,10 @@ title: 快速开始（V2）
 description: 使用 goja 引擎以 V2 API 开发 Miru Alpha 的 JavaScript 扩展
 ---
 
-Miru Alpha 的 JavaScript 扩展由纯 Go 实现的 [goja](https://github.com/dop251/goja) 引擎运行，扩展文件后缀为 `.js`。本页介绍 **V2（推荐）** 的完整 JS 扩展写法；通用元数据与数据返回格式见 [开始开发](/developer/2-extension/) 与 [数据格式](/developer/5-data/)。
+Miru Alpha 的 JavaScript 扩展由纯 Go 实现的 [goja](https://github.com/dop251/goja) 引擎运行，扩展文件后缀为 `.js`。本页介绍 **V2（推荐）** 的完整 JS 扩展写法；通用元数据与数据返回格式见 [开始开发](/docs/developer/2-extension/) 与 [数据格式](/docs/developer/5-data/)。
 
 :::caution[旧版 V1 已不再推荐]
-仍在用 `class extends Extension` 旧写法的扩展请看 [JavaScript 扩展 V1（旧版）](/developer/js/2-legacy-v1/)。**新扩展请统一使用本页的 V2 API**：`watch()` 返回镜像列表、`mirror()` 解析最终地址，且与 Go 扩展契约一致。
+仍在用 `class extends Extension` 旧写法的扩展请看 [JavaScript 扩展 V1（旧版）](/docs/developer/js/2-legacy-v1/)。**新扩展请统一使用本页的 V2 API**：`watch()` 返回镜像列表、`mirror()` 解析最终地址，且与 Go 扩展契约一致。
 :::
 
 ## 创建扩展文件
@@ -75,7 +75,7 @@ var mirror = (url) => ({
 ```
 
 :::note
-V1 的 `watch()` 直接返回最终播放地址，没有 `mirror()` 步骤；V2 的 `mirror()` 等价于 V1 的 `watch()`。若 V2 未实现 `mirror()`，宿主会把选中的镜像地址原样返回。旧版 V1 的完整写法见 [JavaScript 扩展 V1（旧版）](/developer/js/2-legacy-v1/)。
+V1 的 `watch()` 直接返回最终播放地址，没有 `mirror()` 步骤；V2 的 `mirror()` 等价于 V1 的 `watch()`。若 V2 未实现 `mirror()`，宿主会把选中的镜像地址原样返回。旧版 V1 的完整写法见 [JavaScript 扩展 V1（旧版）](/docs/developer/js/2-legacy-v1/)。
 
 `watch()` 接受的两种结构：`{ groups: [{ title, mirrors: [{ name, url, headers }] }] }`（数组形式），或 `{ groups: { "Server 1": [...] } }`（以分组名为 key 的对象形式，推荐，与示例代码一致）。
 :::

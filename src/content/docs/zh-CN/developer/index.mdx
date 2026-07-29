@@ -21,11 +21,11 @@ Miru Alpha 的扩展同时支持两种语言运行时：**JavaScript（goja）**
 1. **环境搭建**：搭建本地开发环境、运行服务。
 2. **开始开发**：填写扩展元数据，并选择你使用的语言（JavaScript 或 Go）。
 3. **语言开发指南**：进入对应语言的页面——
-   - **JavaScript 扩展**：[快速开始（V2）](/developer/js/1-get-started/)（推荐）/ [旧版 V1](/developer/js/2-legacy-v1/)（兼容）/ [数据格式（V2 / V1 旧版）](/developer/5-data/)。
-   - **Go 扩展**：[快速开始](/developer/go/1-get-started/) → [详细用法](/developer/go/2-detail-usage/) → [原生 Go 运行](/developer/go/3-running-native/) / [Scriggo 运行](/developer/go/4-running-scriggo/) → [数据格式](/developer/5-data/)。
+   - **JavaScript 扩展**：[快速开始（V2）](/docs/developer/js/1-get-started/)（推荐）/ [旧版 V1](/docs/developer/js/2-legacy-v1/)（兼容）/ [数据格式（V2 / V1 旧版）](/docs/developer/5-data/)。
+   - **Go 扩展**：[快速开始](/docs/developer/go/1-get-started/) → [详细用法](/docs/developer/go/2-detail-usage/) → [原生 Go 运行](/docs/developer/go/3-running-native/) / [Scriggo 运行](/docs/developer/go/4-running-scriggo/) → [数据格式](/docs/developer/5-data/)。
    
    这些页面包含该语言的入口函数、请求/缓存 API、内置模块（`require` / `sdk`）与可运行示例，是你编写扩展时主要参考的页面。
-4. **数据格式**（[数据格式（V2 / V1 旧版）](/developer/5-data/)）：所有入口方法的入参与返回结构参考；V2 为当前标准，V1 旧版仅作兼容保留，二者按类型播放结构一致。
+4. **数据格式**（[数据格式（V2 / V1 旧版）](/docs/developer/5-data/)）：所有入口方法的入参与返回结构参考；V2 为当前标准，V1 旧版仅作兼容保留，二者按类型播放结构一致。
 
 :::tip
 不确定选哪种语言？想快速上手、门槛低就选 **JavaScript（goja）**；需要复杂解析或复用 Go 生态库就选 **Go（Scriggo）**。两种扩展的元数据与返回结构完全一致。

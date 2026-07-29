@@ -5,7 +5,7 @@ description: Miru Alpha 扩展的入参与返回结构，V2 为当前标准、V1
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-本页定义每个扩展入口的**输入参数和返回结构**，与 [JavaScript 扩展 (V2)](/developer/js/1-get-started/) / [Go 扩展](/developer/go/1-get-started/) 中的入口函数一一对应。
+本页定义每个扩展入口的**输入参数和返回结构**，与 [JavaScript 扩展 (V2)](/docs/developer/js/1-get-started/) / [Go 扩展](/docs/developer/go/1-get-started/) 中的入口函数一一对应。
 
 - **V2（当前标准）**：`watch()` 返回镜像列表，`mirror(url)` 再解析为下方的按类型播放结构。新扩展必须使用 V2。
 - **V1（旧版兼容）**：`watch()` 直接返回最终播放结构，没有 `mirror()` 步骤——详见页尾[数据格式（V1 旧版）](#数据格式v1-旧版)。仅存量扩展参考。
@@ -372,5 +372,5 @@ class Extension {
 ```
 
 :::caution
-V1 已不再推荐用于新扩展；新扩展请统一使用 V2（见 [JavaScript 扩展](/developer/js/1-get-started/) 与 [Go 扩展](/developer/go/1-get-started/)）。
+V1 已不再推荐用于新扩展；新扩展请统一使用 V2（见 [JavaScript 扩展](/docs/developer/js/1-get-started/) 与 [Go 扩展](/docs/developer/go/1-get-started/)）。
 :::

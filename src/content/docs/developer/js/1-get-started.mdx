@@ -3,10 +3,10 @@ title: 快速開始（V2）
 description: 使用 goja 引擎以 V2 API 開發 Miru Alpha 的 JavaScript 插件
 ---
 
-Miru Alpha 的 JavaScript 插件由純 Go 實現的 [goja](https://github.com/dop251/goja) 引擎運行，插件文件後綴為 `.js`。本頁介紹 **V2（推薦）** 的完整 JS 插件寫法；通用元數據與數據返回格式見 [開始開發](/developer/2-extension/) 與 [數據格式](/developer/5-data/)。
+Miru Alpha 的 JavaScript 插件由純 Go 實現的 [goja](https://github.com/dop251/goja) 引擎運行，插件文件後綴為 `.js`。本頁介紹 **V2（推薦）** 的完整 JS 插件寫法；通用元數據與數據返回格式見 [開始開發](/docs/developer/2-extension/) 與 [數據格式](/docs/developer/5-data/)。
 
 :::caution[舊版 V1 已不再推薦]
-仍在用 `class extends Extension` 舊寫法的插件請看 [JavaScript 插件 V1（舊版）](/developer/js/2-legacy-v1/)。**新插件請統一使用本頁的 V2 API**：`watch()` 返回鏡像列表、`mirror()` 解析最終地址，且與 Go 插件契約一致。
+仍在用 `class extends Extension` 舊寫法的插件請看 [JavaScript 插件 V1（舊版）](/docs/developer/js/2-legacy-v1/)。**新插件請統一使用本頁的 V2 API**：`watch()` 返回鏡像列表、`mirror()` 解析最終地址，且與 Go 插件契約一致。
 :::
 
 ## 創建插件文件
@@ -75,7 +75,7 @@ var mirror = (url) => ({
 ```
 
 :::note
-V1 的 `watch()` 直接返回最終播放地址，沒有 `mirror()` 步驟；V2 的 `mirror()` 等價於 V1 的 `watch()`。若 V2 未實現 `mirror()`，宿主會把選中的鏡像地址原樣返回。舊版 V1 的完整寫法見 [JavaScript 插件 V1（舊版）](/developer/js/2-legacy-v1/)。
+V1 的 `watch()` 直接返回最終播放地址，沒有 `mirror()` 步驟；V2 的 `mirror()` 等價於 V1 的 `watch()`。若 V2 未實現 `mirror()`，宿主會把選中的鏡像地址原樣返回。舊版 V1 的完整寫法見 [JavaScript 插件 V1（舊版）](/docs/developer/js/2-legacy-v1/)。
 
 `watch()` 接受的兩種結構：`{ groups: [{ title, mirrors: [{ name, url, headers }] }] }`（數組形式），或 `{ groups: { "Server 1": [...] } }`（以分組名為 key 的對象形式，推薦，與示例代碼一致）。
 :::

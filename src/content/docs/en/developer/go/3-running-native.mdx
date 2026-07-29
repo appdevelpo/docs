@@ -5,7 +5,7 @@ description: Develop and test a Go extension locally as a native Go package (Sta
 
 A Miru Go extension's single source file can be driven in **two stages**. This page covers **Stage 1 · Native Go (development)**: write the extension as an ordinary Go package to get full IDE support and unit testing.
 
-> Key point: **Stage 1 and Stage 2 (Running with Scriggo) use the same source file.** Logic you get working locally with native Go is compiled and executed unchanged by Scriggo at runtime, so there is no "works locally but fails once installed" gap. How the host drives it at runtime is on [Running with Scriggo](/en/developer/go/4-running-scriggo/).
+> Key point: **Stage 1 and Stage 2 (Running with Scriggo) use the same source file.** Logic you get working locally with native Go is compiled and executed unchanged by Scriggo at runtime, so there is no "works locally but fails once installed" gap. How the host drives it at runtime is on [Running with Scriggo](/docs/en/developer/go/4-running-scriggo/).
 
 ## Initialize the project
 
@@ -17,7 +17,7 @@ go get github.com/miru-project/miru-core/pkg/extension/golang/sdk
 
 ## Write and debug like a normal Go package
 
-`my.extension.go` (same shape as in [Detail Usage](/en/developer/go/2-detail-usage/), just `import sdk` directly):
+`my.extension.go` (same shape as in [Detail Usage](/docs/en/developer/go/2-detail-usage/), just `import sdk` directly):
 
 ```go
 package myextension
@@ -116,7 +116,7 @@ In VS Code / Zed, configure the Go debugger (built on Delve) for graphical stepp
 - Before submitting, run `go vet ./...` and `go build ./...` to catch low-level issues (e.g. unused variables) before they reach Scriggo runtime.
 
 :::tip
-Recommended flow: **first get each entry function's return shape right in Stage 1 using native Go + `go test`**, then drop the source file into Miru's extension directory for Stage 2 (Scriggo). The return shapes are identical across both stages (see [Data Formats](/en/developer/5-data/)), so a passing local test means it is correct at runtime.
+Recommended flow: **first get each entry function's return shape right in Stage 1 using native Go + `go test`**, then drop the source file into Miru's extension directory for Stage 2 (Scriggo). The return shapes are identical across both stages (see [Data Formats](/docs/en/developer/5-data/)), so a passing local test means it is correct at runtime.
 :::
 
 The `pkg/extension/golang/extensions/example` package inside miru-core is exactly this "one source, two stages" reference — it can be imported and called directly by native Go, and also compiled and run by Scriggo.
