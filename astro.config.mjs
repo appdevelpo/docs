@@ -20,6 +20,8 @@ export const locales = {
 
 // https://astro.build/config
 export default defineConfig({
+    site: 'https://appdevelpo.github.io',
+    base: '/docs',
     integrations: [
         starlight({
             title: "Miru Alpha",
