@@ -1,0 +1,426 @@
+---
+title: SDK API 參考（更新至 miru_core 5ff71a8）
+description: Go (Scriggo) 插件 SDK 完整類型、函數、構造器與範例
+---
+
+> 本頁基於 `miru_core` 提交 `5ff71a8`（2026-08-24）的 `pkg/extension/golang/sdk/sdk.go` 與 `runtime/*` 生成，涵蓋：模型類型、`Fetch`、過濾器構造器、緩存、設定、Cookie、內容類型常量與完整 `Mirror()` / `Watch()` / `Search()` 範例。
+>
+> **擴展模板**：快速開始可克隆官方模板，包含完整可運行範例：
+>
+> ```bash
+> git clone https://github.com/appdevelpo/miru_extension_template.git
+> ```
+>
+> 模板包含 `extension.go`（V2 入口函數）、`example.js`（JS 參考）、與完整的 `go.mod` / `README.md`。
+
+## 概覽
+
+本參考按功能類別組織：模型類型、過濾器系統、網路與代理、鏡像與播放、緩存、設定、Cookie、完整範例、參考路徑。每個類別下包含對應的類型、函數、構造器與範例。
+
+---
+
+## 快速導覽（建議閱讀順序）
+
+建議按以下順序閱讀（對應擴展開發流程）：
+
+1. **模型類型** → 了解返回結構（`ExtensionListItem`、`ExtensionDetail`、各 `Mirror` 形狀）
+2. **過濾器系統** → `CreateFilter()` 定義篩選條件（`NewSelect()`、`NewMultiSelect()`、`NewRange()`）；`Search()` 讀取已選值（`FirstSelection()`、`SelectionsOf()`）
+3. **跨函數緩存** → `SaveCache()` / `GetCache()`（每次調用新 `VM`，局部變量不保留）
+4. **擴展設定** → `RegisterSetting()` 註冊、`GetSetting()` / `SetSetting()` 讀寫
+5. **網路與代理** → `Fetch()`（通用原語，`errStr` 為字串錯誤）+ `TLSConfig`（瀏覽器指紋偽裝）
+6. **鏡像與播放** → `Watch()`（鏡像列表）與 `Mirror()`（按 `@type` 解析為最終播放結構）；`ContentType` 常量（`HLS`、`MP4`、`Torrent`、`Magnet`）
+7. **Cookie 管理** → `GetCookies()` / `SetCookies()`（與 `Fetch` 共享同一 Cookie Jar）
+8. **完整範例** → `Load()` → `Search()` → `Detail()` → `Watch()` → `Mirror()`
+9. **參考路徑** → 對應 `miru_core` 源碼位置
+
+---
+
+## SDK 包導入
+
+```go
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+```
+
+`sdk` 是 `pkg/extension/golang/runtime` 的別名重導出（避免 `runtime` 與標準庫 `runtime` 衝突）。所有類型均為宿主 `runtime` 類型的別名，可安全跨 Scriggo / 宿主邊界傳遞。
+
+---
+
+## 模型類型
+
+| 類型 | 字段 | 用途 |
+| :- | :- | :- |
+| `sdk.ExtensionListItem` | `Title` / `URL` / `Cover` / `Update` / `Image` / `Type` / `Headers` | `Search()` / `Latest()` 單條結果 |
+| `sdk.ExtensionDetail` | `Title` / `URL` / `Cover` / `Image` / `Type` / `Desc` / `Description` / `Chapters []ExtensionEpisodeGroup` / `Headers` | `Detail()` 完整頁面（`Desc` 與 `Description` 二選一；若同時提供，宿主優先使用 `Desc`，`Description` 被忽略。建議只設一個） |
+| `sdk.ExtensionEpisodeGroup` | `Title` / `URLs []string` | `Detail.Chapters` 內的章節分組（`URLs` 元素可為純字串 URL，或帶 `Name` + `URL` 的結構體；後端自動識別，見 `convert_list.go`） |
+| `sdk.ExtensionWatch` | `Title` / `URL` / `Type` / `Pages []string` / `Groups []ExtensionMirrorGroup` | `Watch()` 通用返回（`@type` 非 `all` / `bangumi` / `manga` / `fikushon`） |
+| `sdk.ExtensionMirrorGroup` | `Title` / `Mirrors []ExtensionMirror` | `Watch.Groups` 鏡像分組 |
+| `sdk.ExtensionMirror` | `Name` / `URL` / `Headers` | 單個鏡像選項 |
+| `sdk.ExtensionAllMirror` | `Manga` / `Fikushon` / `Bangumi` | `@type all` 的 `Watch()` 返回 |
+| `sdk.ExtensionMangaWatchMirror` | `URLs []string` / `Headers` | `@type manga` 的 `Watch()` / `Mirror()` |
+| `sdk.ExtensionFikushonWatchMirror` | `Content []string` / `Title` / `Subtitle` | `@type fikushon` 的 `Watch()` / `Mirror()` |
+| `sdk.ExtensionBangumiWatchMirror` | `Type` (`BangumiWatchType`) / `URL` / `Subtitles` / `Headers` / `AudioTrack` / `TLSConfig` | `@type bangumi` 的 `Watch()` / `Mirror()` |
+| `sdk.ExtensionBangumiWatchMirrorSubtitle` | `Language` / `Title` / `URL` | 單條字幕軌 |
+
+---
+
+## 內容類型常量（`BangumiWatchType`）
+
+```go
+var (
+    HLS     = sdk.HLS      // "hls"
+    MP4     = sdk.MP4      // "mp4"
+    Magnet  = sdk.Magnet   // "magnet"
+    Torrent = sdk.Torrent // "torrent" — EXPORTED from sdk package
+)
+```
+
+> `Torrent` 與 `Magnet` 用於原始 `.torrent` 連結或 `magnet:` URI，這類鏡像**不應**設置 `TLSConfig`（Torrent 解析由前端或後端獨立端點處理，不走鏡像代理）。
+
+---
+
+## 網路與代理（Fetch / TLSConfig / ProxyURL）
+
+> 此類別包含 HTTP 請求原語（`Fetch`）、瀏覽器指紋偽裝（`TLSConfig`）、與代理 URL 建構（`ProxyURL`）。
+
+---
+
+### 網絡請求（`Fetch` + `TLSConfig`）
+
+### 基本 `Fetch`
+
+```go
+body, status, errStr := sdk.Fetch(
+    url,                     // 請求 URL（必填）
+    "GET",                   // 方法（"GET" / "POST" / ...）
+    map[string]string{...},  // 請求頭（可為 nil）
+    "",                      // 請求體字符串（POST 時填入；GET 為 ""）
+    nil,                     // TLSConfig（nil = 不使用瀏覽器指紋；非 nil = tls-client 偽裝）
+)
+// 回傳：響應體字符串 / HTTP 狀態碼 / 錯誤信息（成功時為 ""）
+```
+
+### 使用 `TLSConfig`（繞過 Cloudflare / TLS 指紋校驗）
+
+```go
+tls := &sdk.TLSConfig{
+    Profile:            "chrome_133",     // 瀏覽器指紋配置名（如 chrome_133 / firefox_121）
+    UserAgent:          "Mozilla/5.0 ...",
+    DisableRedirect:    false,
+    InsecureSkipVerify: true,              // 跳過 TLS 證書驗證（測試用）
+}
+body, status, errStr := sdk.Fetch(url, "GET", headers, "", tls)
+```
+
+> **錯誤處理契約**：`Fetch` / 各入口函數若失敗，擴展應返回 `nil` + `fmt.Errorf(...)`，**絕不**同時返回部分結果與非空錯誤字串。`Fetch` 的 `errStr` 非空 = 請求完全失敗（無有效響應）；此時 `body` 為空字串、`status` 為 0，不應解析為有效內容。
+>
+> 重要：`Fetch` 是一個**通用、無站點知識**的原語。所有站點特定邏輯（域名、簽名、解析）都必須寫在調用 `Fetch` 的擴展代碼中，宿主不提供任何內建解析器。
+
+---
+
+## 鏡像與播放（Mirror / Watch / TLSConfig / Content Types）
+
+> 此類別包含鏡像結構（各 `@type` 的 `Mirror()` 回傳類型）、內容類型常量（`HLS`/`MP4`/`Magnet`/`Torrent`）、與代理機制（`TLSConfig` 自動改寫 URL）。
+
+---
+
+### 代理與鏡像（`ProxyURL` + `TLSConfig` 在鏡像上）
+
+### 鏡像上的 `TLSConfig`（推薦做法）
+
+對於需要 TLS 指紋偽裝的 HLS / MP4 流（Cloudflare 前置 CDN），直接在 `ExtensionBangumiWatchMirror` 結構體上設置 `TLSConfig`：
+
+```go
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) {
+    return &sdk.ExtensionBangumiWatchMirror{
+        Type: sdk.HLS,
+        URL:  "https://cdn.example.com/video.m3u8",
+        Headers: map[string]string{
+            "Referer": "https://example.com/",
+        },
+        TLSConfig: &sdk.TLSConfig{
+            Profile: "chrome_133",
+        },
+        Subtitles: []sdk.ExtensionBangumiWatchMirrorSubtitle{
+            {Language: "en", Title: "English", URL: "https://cdn.example.com/subs/en.vtt"},
+        },
+    }, nil
+}
+```
+
+宿主收到鏡像後會自動將**所有** URL（主 URL + 字幕 URL）改寫為 `http://<host>/proxy/...` 代理路徑，Flutter 播放器只與 localhost 通信，TLS 偽裝與上游抓取全部由後端處理。擴展作者**不應**手動調用 `sdk.ProxyURL` 來改寫鏡像 URL。
+
+### `ProxyURL`（僅在需要手動構造代理 URL 時使用）
+
+```go
+proxy := sdk.ProxyURL(
+    targetURL,            // 原始上游 URL
+    map[string]string{"Referer":"https://example.com/"},  // 代理時攜帶的頭
+    "chrome_133",         // tls-client 指紋配置名（空字串為默認）
+)
+// 返回：主機相對的代理 URL 字符串（形如 http://<host>/proxy/...?__u=...&__h=...）
+```
+
+> `ProxyURL` 主要用於擴展內部需要手動構造代理地址的罕見場景（例如非鏡像場景的媒體 URL 重寫）。標準影片播放流程請直接在鏡像上設 `TLSConfig`，無需手動調用。
+
+---
+
+## 過濾器系統（Filter / FilterDefinition / Builders）
+
+> 此類別包含 `FilterDefinition`（`CreateFilter()` 回傳）、`Filter`（`Search()` 接收的已選值）、與對應構造器（`NewSelect()`、`NewMultiSelect()`、`NewRange()`、`FilterSelectionBuilder`）。
+
+### 過濾器（`Filter` 系列 + 構造器）
+
+`CreateFilter()` 返回 `FilterDefinition`（三選一的聯合類型），`Search()` 接收 `Filter`（已選值的映射）。
+
+### `FilterDefinition` 與構造器
+
+```go
+// 單選（SelectFilter）
+sdk.NewSelect("類型", "all").
+    Option("all",     "全部").
+    Option("manga",   "漫畫").
+    Option("bangumi", "動畫").
+    Build()
+
+// 多選（MultiSelectFilter）— Min/Max 為最小與最大可選數
+sdk.NewMultiSelect("標籤", 1, 3).
+    Option("ja", "日語").
+    Option("zh", "中文").
+    // MultiSelect default: set in constructor (NewMultiSelect("標籤", 1, 3, "ja"))
+    Build()
+
+// 數值範圍（RangeFilter）
+sdk.NewRange("年份", 1990, 2025, 2000, 2025).Build()
+```
+
+> `NewSelect` / `NewMultiSelect` / `NewRange` 返回對應的 `*Builder`，通過 `.Option()` 鏈式構造，最後 `.Build()` 返回 `FilterDefinition`（用於 `CreateFilter()`）。注意：`NewMultiSelect` 的預設選項由構造函數的 `defaults ...string` 參數提供（例如 `NewMultiSelect("標籤", 1, 3, "ja")`），而非 `.Default()` 方法（`MultiSelectBuilder` 無 `.Default()` 方法）。`SelectFilter` 的預設由 `NewSelect(title, def)` 的第二個參數設定。
+>
+> 讀取 `Filter`（前端已選值，傳入 `Search()` 的參數）則使用 `FilterSelectionBuilder`：`.Select()`（單選）、`.SelectMany()`（多選）→ `.Build()`。這與構造過濾器定義的 `NewSelect()` 是兩套不同 API，請勿混用。
+
+### 讀取 `Filter`（在 `Search()` / `CreateFilter()` 內）
+
+```go
+func Search(pkg, kw string, page int, filter sdk.Filter) ([]sdk.ExtensionListItem, error) {
+    // 單選值
+    typ := sdk.FirstSelection(filter, "類型")  // "all" / "manga" / ...
+
+    // 多選值（切片）
+    tags := sdk.SelectionsOf(filter, "標籤")     // []string
+
+    // 是否有選擇
+    if sdk.HasSelection(filter, "年份範圍") { ... }
+}
+```
+
+---
+
+## 跨函數緩存（SaveCache / GetCache / DeleteCache）
+
+> 每個 `ScriggoVM` 重新編譯運行，函數內局部變量不保留；需要跨調用共享的數據（token、解析後的元數據）必須透過此機制保存（鍵為包名，值為可序列化 Go 值）。
+
+---
+
+### 跨函數緩存（`SaveCache` / `GetCache`）
+
+Scriggo 每次調用入口函數都會重新編譯運行一個全新的 VM，函數內局部變量不會在多次調用間保留。需要跨調用（例如 `Search()` → `Detail()`）保留的數據（token、解析後的元數據等）必須使用緩存：
+
+```go
+// 寫入（鍵值為字符串；值為可序列化 Go 值 — 字符串、數字、切片、map、結構體均可；
+// 禁止存儲：函數值、channel、帶活躍 goroutine 的引用、已關閉的 VM 對象。這些會在 Scriggo 邊界引發未定義行為。）
+sdk.SaveCache("token", authToken)
+sdk.SaveCache("lastPage", pageNum)
+
+// 讀取
+v, ok := sdk.GetCache("token")
+if ok {
+    token := v.(string)  // 實際應做類型斷言
+}
+```
+
+> 緩存按擴展包名（`pkg` 參數對應的包名）隔離，避免不同擴展互相污染。若要刪除整個包的緩存，可調用 `runtime.DeleteCache(pkg)`（需從 `runtime` 包導入）。
+
+---
+
+## 擴展設定（RegisterSetting / GetSetting / SetSetting / ExtensionSetting）
+
+> 設定定義使用強型別 `ExtensionSetting`（`Key`、`Title`、`Type`、`Value`、`DefaultValue`、`Description`、`Options`），與 JavaScript 的 `registerSetting()` 完全對應。
+
+---
+
+### 設定（`RegisterSetting` / `GetSetting` / `SetSetting`）
+
+```go
+// 註冊（在 Load() 或首次調用時執行一次即可）
+sdk.RegisterSetting(sdk.ExtensionSetting{
+    Key:          "quality",
+    Title:        "畫質",
+    Type:         sdk.SettingRadio,  // SettingInput / SettingRadio / SettingToggle
+    Value:        "1080p",
+    DefaultValue: "720p",
+    Description:  "預設下載畫質",
+    Options:      []string{"720p", "1080p", "4k"},
+}, pkg)
+
+// 讀取
+val, err := sdk.GetSetting(pkg, "quality")  // 回傳字符串；空字串 = 未設定
+
+// 寫入
+err := sdk.SetSetting(pkg, "quality", "4k")
+```
+
+---
+
+## Cookie 管理（GetCookies / SetCookies）
+
+> 與 `Fetch` 共用同一持久化 Cookie Jar（`pkg/network` 層），支援同時使用 `tls-client` 與預設 `fasthttp` 傳輸。
+
+---
+
+### Cookie（`GetCookies` / `SetCookies`）
+
+```go
+cookies, err := sdk.GetCookies("https://example.com/")
+// cookies 為 []string，每項為 "name=value"
+
+err = sdk.SetCookies("https://example.com/", []string{
+    "session_id=abc123; Path=/",
+    "auth_token=xyz; HttpOnly",
+})
+```
+
+---
+
+## 完整入口函數範例（Load / Search / Detail / Watch / Mirror）
+
+> 包含 `Load()`（可選初始化）、`Search()`（帶過濾與緩存）、`Detail()`（抓取與解析）、`Watch()`（通用鏡像列表）、`Mirror()`（按類型解析鏡像與 TLS 代理）。
+
+---
+
+### 完整入口函數範例
+
+```go
+package example
+
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+
+// Load() — 可選，一次性初始化（如註冊設定、預熱緩存）
+func Load() {
+    sdk.RegisterSetting(sdk.ExtensionSetting{
+        Key: "proxy", Title: "代理", Type: sdk.SettingToggle,
+        Value: "false", DefaultValue: "false",
+    }, "example")
+}
+
+func Search(pkg, kw string, page int, filter sdk.Filter) ([]sdk.ExtensionListItem, error) {
+    // 使用緩存複用 token（若存在）
+    token, ok := sdk.GetCache("token")
+    if !ok {
+        // 首次請求登錄拿 token
+        body, _, errStr := sdk.Fetch("https://example.com/login", "POST",
+            map[string]string{"Content-Type":"application/x-www-form-urlencoded"},
+            "username=user&password=pass", nil)
+        if errStr != "" { return nil, fmt.Errorf("login failed: %s", errStr) }
+        token = body // 實際應解析 token
+        sdk.SaveCache("token", token)
+    }
+
+    // 帶過濾條件與 token 的搜尋
+    headers := map[string]string{
+        "Authorization": token.(string),
+        "User-Agent":    "Miru/1.0",
+    }
+    body, _, errStr := sdk.Fetch("https://example.com/search?q="+kw, "GET", headers, "", nil)
+    if errStr != "" { return nil, fmt.Errorf("search failed: %s", errStr) }
+
+    return []sdk.ExtensionListItem{
+        {Title: "結果 1", URL: "https://example.com/1", Cover: "https://example.com/1.jpg", Type: "manga"},
+    }, nil
+}
+
+func Detail(pkg, url string) (*sdk.ExtensionDetail, error) {
+    body, _, errStr := sdk.Fetch(url, "GET", nil, "", nil)
+    if errStr != "" { return nil, fmt.Errorf("detail failed: %s", errStr) }
+    return &sdk.ExtensionDetail{
+        Title: "詳情頁", Desc: body, URL: url,
+        Chapters: []sdk.ExtensionEpisodeGroup{
+            {Title: "第 1 章", URLs: []string{"https://cdn.example.com/1.jpg"}},
+        },
+    }, nil
+}
+
+func Watch(pkg, url string) (*sdk.ExtensionWatch, error) {
+    return &sdk.ExtensionWatch{
+        Title: "播放",
+        URL: url,
+        Type: "manga",
+        Groups: []sdk.ExtensionMirrorGroup{
+            {Title: "源 1", Mirrors: []sdk.ExtensionMirror{
+                {Name: "原畫", URL: url},
+            }},
+        },
+    }, nil
+}
+
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) {
+    // 動畫鏡像：直接設置 TLSConfig 讓後端自動代理 + 偽裝
+    return &sdk.ExtensionBangumiWatchMirror{
+        Type: sdk.HLS,
+        URL:  url,
+        TLSConfig: &sdk.TLSConfig{Profile: "chrome_133"},
+    }, nil
+}
+```
+
+> **注意（執行環境與簽名契約）**：
+>
+> - `Load()` 為可選（若未宣告，擴展延遲至首次請求時編譯）；每次入口調用（`Search`/`Detail`/`Watch`/`Mirror`）都由獨立 `ScriggoVM` 編譯運行（見 `invoke.go` 的 `NewScriggoVM` + `Compile`），並使用 `packagesForPkg(pkg)` 隔離的原生包映射（`devlog.go`，包括 `fmt` 日誌標記與 `Fetch` 網路事件標記）。
+> - `CreateFilter()` 回傳 `map[string]FilterDefinition`（非單一值）；`Search()` 的 `filter` 參數為 `sdk.Filter`（已選值），與 `CreateFilter()` 的定義完全不同，請勿混用。
+> - `Fetch()` 的錯誤以字串 `errStr` 回傳（非 Go `error` 介面），原因為 Scriggo 邊界無法序列化 `error` 值（見 `runtime/model.go` 註釋）；當 `errStr != ""` 時，應返回 `nil, fmt.Errorf(...)`，絕不返回部分結果與非空錯誤同時存在。
+>
+> `Mirror()` 的返回類型取決於擴展的 `@type` 標籤：
+>
+> - `@type bangumi` → `*sdk.ExtensionBangumiWatchMirror`
+> - `@type manga` → `*sdk.ExtensionMangaWatchMirror`（`URLs []string`，無 `TLSConfig`）
+> - `@type fikushon` → `*sdk.ExtensionFikushonWatchMirror`（`Content []string`）
+> - `@type all` → `*sdk.ExtensionAllMirror`（組合 `Manga` / `Fikushon` / `Bangumi` 三成員）
+>
+> 上面的範例僅為 `bangumi`；若你是 `manga` 擴展，請返回對應類型，而非強制轉為 `BangumiWatchMirror`。
+
+```
+
+---
+
+## 參考路徑（源碼對應）
+
+> 每項概念對應到 `miru_core` 源碼路徑；用於驗證 API 行為與調試擴展時快速定位實現。
+
+---
+
+### 參考路徑（源碼對應）
+
+| 概念 | 源碼路徑 |
+| :- | :- |
+| SDK 重導出與別名 | `pkg/extension/golang/sdk/sdk.go` |
+| 模型類型（`ExtensionListItem`、各鏡像形狀） | `pkg/extension/golang/runtime/model.go` |
+| `Fetch` / `ProxyURL` / `TLSConfig` | `pkg/extension/golang/runtime/model.go`（`Fetch`、`TLSConfig` 結構與註釋） |
+| 過濾器（`Select` / `MultiSelect` / `Range` 構造器與 `Filter` 讀取） | `pkg/extension/golang/runtime/filters.go`、`pkg/extension/golang/runtime/filter.go` |
+| 緩存（`SaveCache` / `GetCache` / `DeleteCache`） | `pkg/extension/golang/runtime/cache.go` |
+| 設定（`RegisterSetting` / `GetSetting` / `SetSetting`） | `pkg/extension/golang/runtime/settings.go` |
+| Cookie（`GetCookies` / `SetCookies`） | `pkg/extension/golang/runtime/settings.go`（`GetCookies` / `SetCookies`） |
+
+---
+
+## Scriggo 限制與可導入包（補充）
+
+> 詳細 Scriggo 限制與實操建議見 `developer/go/2-detail-usage.mdx`（含未支持特性列表、`reflect` 限制、`packages.go` 導出要求、性能上限表格）。
+
+### 核心限制（來自 `runtime` 與 `packages` 源碼驗證）
+
+- **方法聲明 / 接口類型**：`runtime/model.go` 所有模型均為結構體（無方法）；`packages.go` 只導出標準包（無自定義接口）。
+- **`unsafe` / `runtime` 導入**：`packages.go` 不包含這些包；`vm.go` 的 `Compile()` 直接拒絕（`scriggo.Build` 會報錯）。
+- **`reflect` 限制**：`convert_reflect.go` 透過 `fieldByName()`（大小寫不敏感）讀取結構體欄位；自定義類型的 `fmt.Printf("%T", v)` 會顯示底層包裝類型名（非你定義的類型）。
+- **原生包限制**：`packages.go` 目前導出 153 個包（含 `archive/tar`、`archive/zip`、`net/http`、`regexp`、`crypto/*`、`sync`、`context` 等）；無法引入外部第三方包（如 `github.com/random/pkg`）。
+- **性能上限**：`packages.go` 註釋提到每函數寄存器上限（127 整數/浮點/字串/通用、256 類型/預定義函數、16384 整數常量、256 字串常量、256 通用值）；`vm.go` 透過 `scriggo.Build()` 強制執行。
+- **緩存機制**：`runtime/cache.go` 的 `extVarCache` 使用 `sync.Map`（按包名隔離）；`HandleReload()` 在熱重載時同時刪除緩存與 `pkgPackages`（`load.go`）。
+
+---

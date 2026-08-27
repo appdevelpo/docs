@@ -22,8 +22,8 @@ Miru Alpha 的插件同時支持兩種語言運行時：**JavaScript（goja）**
 2. **開始開發**：填寫插件元數據，並選擇你使用的語言（JavaScript 或 Go）。
 3. **語言開發指南**：進入對應語言的頁面——
    - **JavaScript 插件**：[快速開始（V2）](/docs/developer/js/1-get-started/)（推薦）/ [舊版 V1](/docs/developer/js/2-legacy-v1/)（兼容）/ [數據格式（V2 / V1 舊版）](/docs/developer/5-data/)。
-   - **Go 插件**：[快速開始](/docs/developer/go/1-get-started/) → [詳細用法](/docs/developer/go/2-detail-usage/) → [原生 Go 運行](/docs/developer/go/3-running-native/) / [Scriggo 運行](/docs/developer/go/4-running-scriggo/) → [數據格式](/docs/developer/5-data/)。
-   
+   - **Go 插件**：[快速開始](/docs/developer/go/1-get-started/) → [SDK API 參考](/docs/developer/go/sdk-api-reference/) → [原生 Go 運行](/docs/developer/go/3-running-native/) / [Scriggo 運行](/docs/developer/go/4-running-scriggo/) → [數據格式](/docs/developer/5-data/)。
+
    這些頁麵包含該語言的入口函數、請求/緩存 API、內置模塊（`require` / `sdk`）與可運行示例，是你編寫插件時主要參考的頁面。
 4. **數據格式**（[數據格式（V2 / V1 舊版）](/docs/developer/5-data/)）：所有入口方法的入參與返回結構參考；V2 為當前標準，V1 舊版僅作兼容保留，二者按類型播放結構一致。
 
@@ -31,3 +31,21 @@ Miru Alpha 的插件同時支持兩種語言運行時：**JavaScript（goja）**
 不確定選哪種語言？想快速上手、門檻低就選 **JavaScript（goja）**；需要複雜解析或複用 Go 生態庫就選 **Go（Scriggo）**。兩種插件的元數據與返回結構完全一致。
 :::
 
+## 核心更新（miru_core `5ff71a8` — 2026-08-24）
+
+以下為基於最新 `miru_core` 提交（`5ff71a8`）的文件變更總結，涉及錯誤處理、日誌、下載、路由與 Go 擴展：
+
+- `pkg/errorHandle/error.go` / `error_test.go`：新增可識別的崩潰日誌（`[CRASH][miru_core]` 標記）與 `LogCrash` / `RecoverLog`；增加 `HandleFatal` / `PanicF` / `PrintStack`。
+- `pkg/logger/log.go`：新增 `LogCrash` 寫入專用 `miru_core_crash.log`（追加模式），並提供 `ensureCrashFile` 備援。
+- `binary/main.go` / `router/router.go`：啟動時 `defer` 防護、記憶體監控、擴展路徑初始化、統一熱重載監聽（`WatchExtensions`）。
+- `pkg/extension/golang/packages.go`：新增 `DownloadMediaType` / `DownloadCategory` 枚舉與大量 Go 標準包映射（`path/filepath`、`reflect`、`regexp`、`runtime`、`unicode` 等）。
+- `binary/crash_log_test.go`：崩潰日誌測試。
+
+詳細參考：`pkg/errorHandle/`（錯誤與崩潰）、`pkg/logger/`（可識別日誌）、`pkg/download/`（枚舉與類型）、`router/`（熱重載與路由初始化）。
+
+### SDK API 文件
+
+更多 `sdk` 類型與函數參考：
+
+- 中文：`/docs/developer/go/sdk-api-reference/`
+- 英文：`/docs/en/developer/go/sdk-api-reference/`

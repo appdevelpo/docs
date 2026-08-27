@@ -1,0 +1,334 @@
+---
+title: SDK API Reference (updated for miru_core 5ff71a8)
+description: Complete Go (Scriggo) SDK types, functions, builders & examples
+---
+
+> Updated for `miru_core` commit `5ff71a8` (2026-08-24) with `pkg/extension/golang/sdk/sdk.go` and `runtime/*`. Covers: model types, `Fetch`, filter builders, cache, settings, cookies, content type constants, and full `Mirror()` / `Watch()` / `Search()` examples.
+
+> **Extension Template**: Quick start by cloning the official template:
+>
+> ```bash
+> git clone https://github.com/appdevelpo/miru_extension_template.git
+> ```
+
+> **Note (V1 vs V2)**: The official template (`miru_extension_template/extension.go`) uses V1-style `filter string`. For V2 (`@apiVersion 2` or current), use `filter sdk.Filter`.
+
+## Overview & Import
+
+### SDK Import
+
+```go
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+```
+
+`sdk` is a curated re-export of the internal `runtime` package (avoiding the name clash with Go's standard `runtime`). All types are aliases of host `runtime` types for clean Scriggo/host boundary crossing.
+
+---
+
+## Model Types
+
+| Type | Fields | Usage |
+| :- | :- | :- |
+| `sdk.ExtensionListItem` | `Title` / `URL` / `Cover` / `Update` / `Image` / `Type` / `Headers` | `Search()` / `Latest()` result row |
+| `sdk.ExtensionDetail` | `Title` / `URL` / `Cover` / `Image` / `Type` / `Desc` / `Description` / `Chapters []ExtensionEpisodeGroup` / `Headers` | `Detail()` full page (`Desc` preferred; `Description` ignored if both set) |
+| `sdk.ExtensionEpisodeGroup` | `Title` / `URLs []string` | `Detail.Chapters` group (`URLs` may be bare strings or `{Name, URL}` structs; host handles both) |
+| `sdk.ExtensionWatch` | `Title` / `URL` / `Type` / `Pages []string` / `Groups []ExtensionMirrorGroup` | `Watch()` return (`@type` not `all`/`bangumi`/`manga`/`fikushon`) |
+| `sdk.ExtensionMirrorGroup` | `Title` / `Mirrors []ExtensionMirror` | `Watch.Groups` mirror group |
+| `sdk.ExtensionMirror` | `Name` / `URL` / `Headers` | Single mirror option |
+| `sdk.ExtensionAllMirror` | `Manga` / `Fikushon` / `Bangumi` | `@type all` `Watch()` return |
+| `sdk.ExtensionMangaWatchMirror` | `URLs []string` / `Headers` | `@type manga` `Watch()` / `Mirror()` |
+| `sdk.ExtensionFikushonWatchMirror` | `Content []string` / `Title` / `Subtitle` | `@type fikushon` `Watch()` / `Mirror()` |
+| `sdk.ExtensionBangumiWatchMirror` | `Type` (`BangumiWatchType`) / `URL` / `Subtitles` / `Headers` / `AudioTrack` / `TLSConfig` | `@type bangumi` `Watch()` / `Mirror()` |
+| `sdk.ExtensionBangumiWatchMirrorSubtitle` | `Language` / `Title` / `URL` | Subtitle track |
+
+---
+
+## Content Type Constants (`BangumiWatchType`)
+
+```go
+var (
+    HLS     = sdk.HLS      // "hls"
+    MP4     = sdk.MP4      // "mp4"
+    Magnet  = sdk.Magnet   // "magnet"
+    Torrent = sdk.Torrent  // "torrent" — EXPORTED from sdk package (same alias as HLS/MP4/Magnet)
+)
+```
+
+> `Torrent` and `Magnet` are for raw `.torrent` links or `magnet:` URIs. These mirrors must NOT set `TLSConfig` (torrent resolution is handled separately, not by mirror proxy).
+
+---
+
+## Network & Proxy (`Fetch` + `TLSConfig` + `ProxyURL`)
+
+### Basic `Fetch`
+
+```go
+body, status, errStr := sdk.Fetch(
+    url,                     // URL (required)
+    "GET",                   // method ("GET" / "POST" / ...)
+    map[string]string{...},  // headers (nil allowed)
+    "",                      // request body (empty for GET)
+    nil,                     // TLSConfig (nil = default; non-nil = tls-client fingerprint)
+)
+// Returns: response body string / HTTP status / error message (empty on success)
+```
+
+### Using `TLSConfig` (Cloudflare / TLS fingerprint bypass)
+
+```go
+tls := &sdk.TLSConfig{
+    Profile:            "chrome_133",
+    UserAgent:          "Mozilla/5.0 ...",
+    DisableRedirect:    false,
+    InsecureSkipVerify: true,
+}
+body, status, errStr := sdk.Fetch(url, "GET", headers, "", tls)
+```
+
+> `Fetch` is generic and site-agnostic. All site-specific logic (domain, signing, parsing) lives inside the extension that calls it. The host provides no built-in parser.
+
+---
+
+## Mirror & Watch + Content Types (`Mirror` / `Watch` / `BangumiWatchType`)
+
+### Mirror-level `TLSConfig` (recommended)
+
+For HLS/MP4 streams behind TLS-fingerprinting CDNs, set `TLSConfig` directly on the mirror struct:
+
+```go
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) {
+    return &sdk.ExtensionBangumiWatchMirror{
+        Type: sdk.HLS,
+        URL:  "https://cdn.example.com/video.m3u8",
+        Headers: map[string]string{"Referer": "https://example.com/"},
+        TLSConfig: &sdk.TLSConfig{Profile: "chrome_133"},
+        Subtitles: []sdk.ExtensionBangumiWatchMirrorSubtitle{
+            {Language: "en", Title: "English", URL: "https://cdn.example.com/subs/en.vtt"},
+        },
+    }, nil
+}
+```
+
+The host rewrites all mirror URLs (main + subtitles) to host-relative `/proxy/...` paths. The Flutter player communicates only with localhost; TLS fingerprinting and upstream fetch are handled server-side. Do NOT call `sdk.ProxyURL` manually on mirror URLs.
+
+### `ProxyURL` (manual only)
+
+```go
+proxy := sdk.ProxyURL(
+    targetURL,
+    map[string]string{"Referer":"https://example.com/"},
+    "chrome_133",
+)
+// Returns: host-relative proxy URL string (e.g. http://<host>/proxy/...?__u=...)
+```
+
+> `ProxyURL` is for rare cases requiring manual proxy URL construction. Standard video playback: set `TLSConfig` on mirror and let the host handle it.
+
+---
+
+## Filter System (`FilterDefinition` + `Filter` + Builders)
+
+`CreateFilter()` returns `FilterDefinition` (typed union: exactly one of `Select`/`MultiSelect`/`Range` set). `Search()` receives `Filter` (the selected values mapping).
+
+### `FilterDefinition` & Builders
+
+```go
+// Select (single-value)
+sdk.NewSelect("Type", "all").
+    Option("all", "All").
+    Option("manga", "Manga").
+    Option("bangumi", "Anime").
+    Build()
+
+// MultiSelect (multi-value, Min/Max bounds, constructor variadic defaults)
+sdk.NewMultiSelect("Tags", 1, 3, "ja").
+    Option("ja", "Japanese").
+    Option("zh", "Chinese").
+    Build()
+
+// Range (numeric bounds)
+sdk.NewRange("Year", 1990, 2025, 2000, 2025).Build()
+```
+
+> `NewSelect` / `NewMultiSelect` / `NewRange` return `*Builder`. Chain `.Option()`; `.Build()` returns `FilterDefinition` (for `CreateFilter()`). Note: `NewMultiSelect` takes variadic `defaults ...string` (constructor-level default); `SelectFilter` uses constructor `def` parameter. `MultiSelectBuilder` does NOT have `.Default()`.
+
+### Read `Filter` (in `Search()` / `CreateFilter()`)
+
+```go
+func Search(pkg, kw string, page int, filter sdk.Filter) ([]sdk.ExtensionListItem, error) {
+    // Single-select value
+    typ := sdk.FirstSelection(filter, "Type")
+    // Multi-select values (slice)
+    tags := sdk.SelectionsOf(filter, "Tags")
+    // Has selection?
+    if sdk.HasSelection(filter, "YearRange") { ... }
+}
+```
+
+---
+
+## Cross-Function Cache (`SaveCache` / `GetCache` / `DeleteCache`)
+
+Every `Search()` / `Detail()` / `Watch()` / `Mirror()` call runs a fresh `ScriggoVM` (see `invoke.go`). Function-local variables do not persist across calls. Use cache for cross-call state:
+
+```go
+// Write (key is string; value: string/number/slice/map/struct. AVOID: function values, channels, goroutine-bound references — these break the Scriggo VM boundary.)
+sdk.SaveCache("token", authToken)
+
+// Read
+v, ok := sdk.GetCache("token")
+if ok {
+    token := v.(string)
+}
+```
+
+> Cache is isolated per extension package (`pkg`). To delete: `runtime.DeleteCache(pkg)`. Note lazy `ensureCrashFile` fallback for pre-init panics (`pkg/logger/log.go`).
+
+---
+
+## Extension Settings (`RegisterSetting` / `GetSetting` / `SetSetting`)
+
+```go
+// Register (run once in Load() or first call)
+sdk.RegisterSetting(sdk.ExtensionSetting{
+    Key: "quality", Title: "Quality", Type: sdk.SettingRadio,
+    Value: "1080p", DefaultValue: "720p",
+    Description: "Default download quality", Options: []string{"720p", "1080p", "4k"},
+}, pkg)
+
+// Read
+val, err := sdk.GetSetting(pkg, "quality")  // empty string = unset
+
+// Write
+err := sdk.SetSetting(pkg, "quality", "4k")
+```
+
+---
+
+## Cookie Management (`GetCookies` / `SetCookies`)
+
+```go
+cookies, err := sdk.GetCookies("https://example.com/")
+// cookies: []string (each "name=value")
+
+err = sdk.SetCookies("https://example.com/", []string{
+    "session_id=abc; Path=/",
+    "auth_token=xyz; HttpOnly",
+})
+```
+
+---
+
+## Full Entry-Point Example (`Load` / `Search` / `Detail` / `Watch` / `Mirror`)
+
+```go
+package example
+
+import sdk "github.com/miru-project/miru-core/pkg/extension/golang/sdk"
+
+func Load() {
+    sdk.RegisterSetting(sdk.ExtensionSetting{
+        Key: "proxy", Title: "Proxy", Type: sdk.SettingToggle,
+        Value: "false", DefaultValue: "false",
+    }, "example")
+}
+
+func Search(pkg, kw string, page int, filter sdk.Filter) ([]sdk.ExtensionListItem, error) {
+    token, ok := sdk.GetCache("token")
+    if !ok {
+        body, _, errStr := sdk.Fetch("https://example.com/login", "POST",
+            map[string]string{"Content-Type":"application/x-www-form-urlencoded"},
+            "username=user&password=pass", nil)
+        if errStr != "" { return nil, fmt.Errorf("login failed: %s", errStr) }
+        token = body
+        sdk.SaveCache("token", token)
+    }
+    headers := map[string]string{"Authorization": token.(string), "User-Agent":"Miru/1.0"}
+    body, _, errStr := sdk.Fetch("https://example.com/search?q="+kw, "GET", headers, "", nil)
+    if errStr != "" { return nil, fmt.Errorf("search failed: %s", errStr) }
+    return []sdk.ExtensionListItem{
+        {Title: "Result 1", URL: "https://example.com/1", Cover: "https://example.com/1.jpg", Type: "manga"},
+    }, nil
+}
+
+func Detail(pkg, url string) (*sdk.ExtensionDetail, error) {
+    body, _, errStr := sdk.Fetch(url, "GET", nil, "", nil)
+    if errStr != "" { return nil, fmt.Errorf("detail failed: %s", errStr) }
+    return &sdk.ExtensionDetail{
+        Title: "Detail", Desc: body, URL: url,
+        Chapters: []sdk.ExtensionEpisodeGroup{
+            {Title: "Chapter 1", URLs: []string{"https://cdn.example.com/1.jpg"}},
+        },
+    }, nil
+}
+
+func Watch(pkg, url string) (*sdk.ExtensionWatch, error) {
+    return &sdk.ExtensionWatch{
+        Title: "Playback",
+        URL: url,
+        Type: "manga",
+        Groups: []sdk.ExtensionMirrorGroup{
+            {Title: "Source 1", Mirrors: []sdk.ExtensionMirror{
+                {Name: "Raw", URL: url},
+            }},
+        },
+    }, nil
+}
+
+func Mirror(pkg, url string) (*sdk.ExtensionBangumiWatchMirror, error) {
+    return &sdk.ExtensionBangumiWatchMirror{
+        Type: sdk.HLS,
+        URL:  url,
+        TLSConfig: &sdk.TLSConfig{Profile: "chrome_133"},
+    }, nil
+}
+```
+
+> **Note (`Mirror()` return)**: Depends on extension's `@type` tag:
+>
+> - `@type bangumi` -> `*ExtensionBangumiWatchMirror`
+> - `@type manga` -> `*ExtensionMangaWatchMirror` (`URLs []string`, no `TLSConfig`)
+> - `@type fikushon` -> `*ExtensionFikushonWatchMirror` (`Content []string`)
+> - `@type all` -> `*ExtensionAllMirror` (`Manga` / `Fikushon` / `Bangumi` members)
+> Example above is `bangumi`; adjust return type accordingly.
+
+---
+
+## Source References
+
+| Concept | Source Path |
+| :- | :- |
+| SDK alias/re-export | `pkg/extension/golang/sdk/sdk.go` |
+| Model types (watch/mirror shapes) | `pkg/extension/golang/runtime/model.go` |
+| `Fetch` / `TLSConfig` / `ProxyURL` | `pkg/extension/golang/runtime/model.go` |
+| Filter builders (`NewSelect` etc) and `Filter` reading | `pkg/extension/golang/runtime/filters.go`, `runtime/filter.go` |
+| Cache (`SaveCache` / `GetCache` / `DeleteCache`) | `pkg/extension/golang/runtime/cache.go` |
+| Settings (`RegisterSetting` / `GetSetting` / `SetSetting`) | `pkg/extension/golang/runtime/settings.go` |
+| Cookies (`GetCookies` / `SetCookies`) | `pkg/extension/golang/runtime/settings.go` |
+
+---
+
+## Extension Dev Audit Notes
+
+> **Filter Concepts**: Three separate layers — `FilterDefinition` (what `CreateFilter()` returns: `Select`/`MultiSelect`/`Range` union); `Filter` (frontend selection passed to `Search()`); `FilterSelectionBuilder` (`.Select()` / `.SelectMany()` / `.Build()`). Do not mix.
+>
+> **CreateFilter Return**: Must return `map[string]sdk.FilterDefinition`, not a single value. The host converts each entry via `reflect.Map` -> `runtime.FilterDefinitionToProto` (`filter_bridge.go`).
+>
+> **Episode URLs**: `URLs` elements may be bare URL strings or `{Name, URL}` structs. The host (`convert_list.go`) handles both automatically.
+>
+> **Execution Environment**: `Load()` is optional (lazy compile on first request). Each entry point call creates a fresh `ScriggoVM` (`invoke.go`) with isolated native package mapping (`packagesForPkg()` in `devlog.go`). `Fetch()` errors return strings (`errStr`), not Go `error` interfaces, due to Scriggo boundary limits (`runtime/model.go`).
+
+---
+
+## Scriggo Limitations & Importable Packages (Supplement)
+
+> Full Scriggo limitations and practical advice: see `developer/go/2-detail-usage.mdx`. Key verified points from source (`packages.go`, `runtime/model.go`, `vm.go`, `convert_reflect.go`):
+
+- **Method / interface declarations**: Not supported (models are plain structs in `runtime/model.go`).
+- **`unsafe` / `runtime` imports**: Not in `packages.go`; `Compile()` rejects them.
+- **`reflect` limitations**: `convert_reflect.go` reads fields case-insensitively (`URL` -> `Url`); `fmt.Printf("%T", v)` shows underlying host wrapper type, not user-defined type.
+- **Native package isolation**: `devlog.go`'s `packagesForPkg()` clones the 153-entry `packages` map per extension (`packages.go` init); only these 153 packages can be imported.
+- **Performance limits**: Per `packages.go` comments (register limits: 127 int/float/string/generic, 256 types/predefined functions, 16384 int/float constants, 256 string constants, 256 generic values); enforced by `scriggo.Build()` (`vm.go`).
+- **Cache isolation**: `runtime/cache.go` (`sync.Map`); `load.go` (`HandleReload`) drops both cache and `pkgPackages` on `.go` file change.
+
+---
